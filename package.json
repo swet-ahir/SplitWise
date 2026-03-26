@@ -1,0 +1,12 @@
+{
+  "name": "splitwise-app",
+  "version": "1.0.0",
+  "description": "Splitwise clone — split expenses with friends and groups",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
