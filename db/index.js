@@ -1,16 +1,11 @@
 const { Pool } = require('pg');
 
-if (!process.env.DATABASE_URL) {
-  console.error('ERROR: DATABASE_URL environment variable is not set.');
-  process.exit(1);
-}
-
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
+const pool = process.env.DATABASE_URL
+  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
+  : null;
 
 async function query(text, params) {
+  if (!pool) throw new Error('DATABASE_URL is not configured');
   const client = await pool.connect();
   try {
     const result = await client.query(text, params);
