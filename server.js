@@ -1,43 +1,52 @@
-const http = require('http');
-const fs = require('fs');
+require('dotenv').config();
+const express = require('express');
 const path = require('path');
+const { initSchema } = require('./db');
 
+const app = express();
 const PORT = process.env.PORT || 3000;
 
-const MIME = {
-  '.html': 'text/html',
-  '.css':  'text/css',
-  '.js':   'application/javascript',
-  '.json': 'application/json',
-  '.png':  'image/png',
-  '.jpg':  'image/jpeg',
-  '.svg':  'image/svg+xml',
-  '.ico':  'image/x-icon',
-};
+// Note: Set JWT_SECRET env var in production. Default is 'splitwise_secret_key'.
+// For Railway: add DATABASE_URL and JWT_SECRET in environment variables.
 
-const server = http.createServer((req, res) => {
-  let urlPath = req.url.split('?')[0];
-  if (urlPath === '/') urlPath = '/index.html';
+// Middleware
+app.use(express.json());
+app.use(express.static(path.join(__dirname)));
 
-  const filePath = path.join(__dirname, urlPath);
-  const ext = path.extname(filePath);
-  const contentType = MIME[ext] || 'text/plain';
+// API Routes
+const authRouter = require('./routes/auth');
+const groupsRouter = require('./routes/groups');
+const expensesRouter = require('./routes/expenses');
+const settlementsRouter = require('./routes/settlements');
+const notificationsRouter = require('./routes/notifications');
+const usersRouter = require('./routes/users');
 
-  fs.readFile(filePath, (err, data) => {
-    if (err) {
-      // SPA fallback — serve index.html for unknown routes
-      fs.readFile(path.join(__dirname, 'index.html'), (e2, d2) => {
-        if (e2) { res.writeHead(404); res.end('Not found'); return; }
-        res.writeHead(200, { 'Content-Type': 'text/html' });
-        res.end(d2);
-      });
-      return;
-    }
-    res.writeHead(200, { 'Content-Type': contentType });
-    res.end(data);
+app.use('/api/auth', authRouter);
+app.use('/api/groups', groupsRouter);
+app.use('/api/expenses', expensesRouter);
+app.use('/api/settlements', settlementsRouter);
+app.use('/api/notifications', notificationsRouter);
+app.use('/api/users', usersRouter);
+
+// SPA fallback — serve index.html for non-API routes
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Global error handler
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err);
+  res.status(500).json({ error: err.message || 'Internal server error' });
+});
+
+// Initialize DB schema then start server
+initSchema()
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`Splitwise running on port ${PORT}`);
+    });
+  })
+  .catch(err => {
+    console.error('Failed to initialize database schema:', err);
+    process.exit(1);
   });
-});
-
-server.listen(PORT, () => {
-  console.log(`Splitwise running on port ${PORT}`);
-});

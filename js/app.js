@@ -1,10 +1,11 @@
 // ===== MAIN APP CONTROLLER =====
 
 let currentRoute = 'dashboard';
+let _groups = [];       // Groups cache — updated on navigate
+let _unreadCount = 0;   // Notification badge cache
 
 function initApp() {
-  const user = store.currentUser;
-  if (!user) {
+  if (!api.isLoggedIn()) {
     document.getElementById('app-screen').classList.add('hidden');
     document.getElementById('auth-screen').classList.remove('hidden');
     renderAuth();
@@ -14,15 +15,23 @@ function initApp() {
   document.getElementById('auth-screen').classList.add('hidden');
   document.getElementById('app-screen').classList.remove('hidden');
 
-  renderSidebar();
-  navigate(currentRoute || 'dashboard');
+  // Load groups for sidebar, then render
+  api.getGroups().then(groups => {
+    _groups = groups;
+    renderSidebar();
+    navigate(currentRoute || 'dashboard');
+    // Load unread count async
+    loadUnreadCount();
+  }).catch(() => {
+    renderSidebar();
+    navigate(currentRoute || 'dashboard');
+  });
 }
 
 // ===== SIDEBAR =====
 function renderSidebar() {
-  const me = store.currentUser;
-  const groups = store.getUserGroups();
-  const unread = store.getUnreadCount();
+  const me = api.currentUser;
+  if (!me) return;
 
   document.getElementById('sidebar').innerHTML = `
     <div class="sidebar-logo">
@@ -43,20 +52,20 @@ function renderSidebar() {
       </div>
       <div class="nav-item ${currentRoute === 'notifications' ? 'active' : ''}" onclick="navigate('notifications')">
         <span class="icon">🔔</span> Notifications
-        <span id="notif-badge" class="badge ${unread === 0 ? 'hidden' : ''}">${unread > 99 ? '99+' : unread}</span>
+        <span id="notif-badge" class="badge ${_unreadCount === 0 ? 'hidden' : ''}">${_unreadCount > 99 ? '99+' : _unreadCount}</span>
       </div>
     </div>
 
-    ${groups.length > 0 ? `
+    ${_groups.length > 0 ? `
       <div class="sidebar-section">
         <div class="sidebar-section-title">Your Groups</div>
-        ${groups.slice(0, 8).map(g => `
+        ${_groups.slice(0, 8).map(g => `
           <div class="nav-item ${currentRoute === 'group:' + g.id ? 'active' : ''}" onclick="navigate('group:${g.id}')">
             <span class="icon">${g.icon}</span>
             <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.name}</span>
           </div>
         `).join('')}
-        ${groups.length > 8 ? `<div class="nav-item" onclick="navigate('groups')"><span class="icon">+</span> ${groups.length - 8} more...</div>` : ''}
+        ${_groups.length > 8 ? `<div class="nav-item" onclick="navigate('groups')"><span class="icon">+</span> ${_groups.length - 8} more...</div>` : ''}
         <div class="nav-item" onclick="openCreateGroupModal()" style="color:var(--primary)">
           <span class="icon">➕</span> New Group
         </div>
@@ -79,7 +88,8 @@ function renderSidebar() {
 }
 
 function renderSidebarUser() {
-  const me = store.currentUser;
+  const me = api.currentUser;
+  if (!me) return;
   const nameEl = document.querySelector('.user-name');
   const emailEl = document.querySelector('.user-email');
   const avatarEl = document.querySelector('.user-info .avatar');
@@ -98,14 +108,12 @@ function navigate(route) {
   // Close mobile sidebar
   document.getElementById('sidebar').classList.remove('open');
 
-  // Update active states in sidebar
-  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
-
-  // Update notification badge
-  updateNotificationBadge();
-
-  // Re-render sidebar to reflect current route + any updates
+  // Re-render sidebar to reflect current route
   renderSidebar();
+
+  // Update topbar badge
+  const topBadge = document.getElementById('topbar-badge');
+  if (topBadge) topBadge.classList.toggle('hidden', _unreadCount === 0);
 
   const content = document.getElementById('page-content');
   content.innerHTML = spinnerHTML();
@@ -126,7 +134,7 @@ function navigate(route) {
     renderProfilePage();
   } else {
     document.getElementById('page-title').textContent = '404';
-    content.innerHTML = emptyStateHTML('🔍', 'Page not found', 'The page you\'re looking for doesn\'t exist.', '<button class="btn btn-primary" onclick="navigate(\'dashboard\')">Go Home</button>');
+    content.innerHTML = emptyStateHTML('🔍', 'Page not found', "The page you're looking for doesn't exist.", '<button class="btn btn-primary" onclick="navigate(\'dashboard\')">Go Home</button>');
   }
 }
 
@@ -140,11 +148,10 @@ function renderTopBar() {
     <div class="d-flex align-center gap-8">
       <button class="btn btn-ghost btn-icon" onclick="navigate('notifications')" title="Notifications" style="position:relative">
         🔔
-        <span id="topbar-badge" class="hidden" style="position:absolute;top:2px;right:2px;width:8px;height:8px;background:var(--danger);border-radius:50%"></span>
+        <span id="topbar-badge" class="${_unreadCount === 0 ? 'hidden' : ''}" style="position:absolute;top:2px;right:2px;width:8px;height:8px;background:var(--danger);border-radius:50%"></span>
       </button>
       <button class="btn btn-secondary btn-sm" onclick="navigate('profile')">
-        ${renderAvatar(store.currentUser, 'avatar-sm')}
-        <span style="display:none" class="d-none">Profile</span>
+        ${renderAvatar(api.currentUser, 'avatar-sm')}
       </button>
     </div>
   `;
@@ -162,15 +169,7 @@ document.addEventListener('click', (e) => {
   }
 });
 
-// Override updateNotificationBadge to also update topbar
-const _origUpdateBadge = window.updateNotificationBadge;
-window.updateNotificationBadge = function() {
-  if (_origUpdateBadge) _origUpdateBadge();
-  const count = store.getUnreadCount();
-  const topBadge = document.getElementById('topbar-badge');
-  if (topBadge) topBadge.classList.toggle('hidden', count === 0);
-};
-
 window.navigate = navigate;
+window.renderSidebar = renderSidebar;
 window.renderSidebarUser = renderSidebarUser;
 window.initApp = initApp;

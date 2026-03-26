@@ -1,25 +1,39 @@
 // ===== NOTIFICATIONS VIEW =====
 
-function renderNotificationsPage() {
-  const notifications = store.getUserNotifications();
-  store.markNotificationsRead();
-  updateNotificationBadge();
-
+async function renderNotificationsPage() {
   document.getElementById('page-title').textContent = 'Notifications';
-  document.getElementById('page-content').innerHTML = `
-    <div class="d-flex justify-between align-center mb-24">
-      <p class="text-muted">${notifications.length} notification${notifications.length !== 1 ? 's' : ''}</p>
-      ${notifications.length > 0 ? `<button class="btn btn-ghost btn-sm" onclick="clearAllNotifications()">Clear All</button>` : ''}
-    </div>
-    <div class="card">
-      <div class="card-body" style="padding:0">
-        ${notifications.length === 0
-          ? emptyStateHTML('🔔', 'No notifications', 'You\'re all caught up! Notifications will appear here when group members add expenses or settle up.')
-          : notifications.map(n => renderNotificationItem(n)).join('')
-        }
+  document.getElementById('page-content').innerHTML = spinnerHTML();
+
+  try {
+    const notifications = await api.getNotifications();
+
+    // Mark all as read
+    await api.markAllRead().catch(() => {});
+
+    // Update badge
+    _unreadCount = 0;
+    updateNotificationBadge();
+
+    document.getElementById('page-content').innerHTML = `
+      <div class="d-flex justify-between align-center mb-24">
+        <p class="text-muted">${notifications.length} notification${notifications.length !== 1 ? 's' : ''}</p>
+        ${notifications.length > 0 ? `<button class="btn btn-ghost btn-sm" onclick="clearAllNotifications()">Clear All</button>` : ''}
       </div>
-    </div>
-  `;
+      <div class="card">
+        <div class="card-body" style="padding:0">
+          ${notifications.length === 0
+            ? emptyStateHTML('🔔', 'No notifications', "You're all caught up! Notifications will appear here when group members add expenses or settle up.")
+            : notifications.map(n => renderNotificationItem(n)).join('')
+          }
+        </div>
+      </div>
+    `;
+  } catch (err) {
+    document.getElementById('page-content').innerHTML = `
+      <div class="card"><div class="card-body">
+        ${emptyStateHTML('⚠️', 'Failed to load notifications', err.message, '<button class="btn btn-primary" onclick="navigate(\'notifications\')">Retry</button>')}
+      </div></div>`;
+  }
 }
 
 function renderNotificationItem(n) {
@@ -38,9 +52,10 @@ function renderNotificationItem(n) {
     default: '#f9fafb',
   };
   const bg = bgColors[n.type] || bgColors.default;
+  const groupId = n.meta?.groupId || '';
 
   return `
-    <div class="notification-item ${n.read ? '' : 'unread'}" onclick="handleNotificationClick('${n.id}','${n.meta?.groupId || ''}')">
+    <div class="notification-item ${n.read ? '' : 'unread'}" onclick="handleNotificationClick('${groupId}')">
       <div style="width:36px;height:36px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${icon}</div>
       <div class="notification-content flex-1">
         <div class="title">${n.message}</div>
@@ -50,32 +65,47 @@ function renderNotificationItem(n) {
     </div>`;
 }
 
-window.handleNotificationClick = function(id, groupId) {
-  store.markNotificationRead(id);
+window.handleNotificationClick = function(groupId) {
   if (groupId) navigate('group:' + groupId);
 };
 
-window.clearAllNotifications = function() {
-  const me = store.currentUser;
-  store.data.notifications = store.data.notifications.filter(n => n.userId !== me.id);
-  store.data.notifications; // trigger save via dirty check
-  localStorage.setItem('splitwise_data', JSON.stringify(store.data));
-  showToast('Notifications cleared', 'info');
-  renderNotificationsPage();
+window.clearAllNotifications = async function() {
+  try {
+    await api.clearNotifications();
+    _unreadCount = 0;
+    updateNotificationBadge();
+    showToast('Notifications cleared', 'info');
+    renderNotificationsPage();
+  } catch (e) {
+    showToast('Failed to clear notifications', 'error');
+  }
 };
 
 function updateNotificationBadge() {
-  const count = store.getUnreadCount();
   const badge = document.getElementById('notif-badge');
   if (badge) {
-    if (count > 0) {
-      badge.textContent = count > 99 ? '99+' : count;
+    if (_unreadCount > 0) {
+      badge.textContent = _unreadCount > 99 ? '99+' : _unreadCount;
       badge.classList.remove('hidden');
     } else {
       badge.classList.add('hidden');
     }
   }
+  // Also update topbar badge if present
+  const topBadge = document.getElementById('topbar-badge');
+  if (topBadge) topBadge.classList.toggle('hidden', _unreadCount === 0);
+}
+
+async function loadUnreadCount() {
+  try {
+    const notifications = await api.getNotifications();
+    _unreadCount = notifications.filter(n => !n.read).length;
+    updateNotificationBadge();
+  } catch (e) {
+    // Silently fail — badge just won't update
+  }
 }
 
 window.renderNotificationsPage = renderNotificationsPage;
 window.updateNotificationBadge = updateNotificationBadge;
+window.loadUnreadCount = loadUnreadCount;

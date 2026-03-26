@@ -64,68 +64,19 @@ function renderRegisterForm() {
 }
 
 function fillDemoAccount() {
-  // Create demo data if not exists
-  try {
-    store.register('Alex Johnson', 'alex@demo.com', 'demo123');
-  } catch (e) {}
-  try {
-    store.register('Jamie Smith', 'jamie@demo.com', 'demo123');
-  } catch (e) {}
-  try {
-    store.register('Casey Lee', 'casey@demo.com', 'demo123');
-  } catch (e) {}
-  try {
-    store.register('Morgan Brown', 'morgan@demo.com', 'demo123');
-  } catch (e) {}
-
-  // Login as Alex and create sample groups + expenses
-  store.login('alex@demo.com', 'demo123');
-
-  if (store.getUserGroups().length === 0) {
-    seedDemoData();
-  }
-
-  document.getElementById('login-email').value = 'alex@demo.com';
-  document.getElementById('login-password').value = 'demo123';
-  showToast('Demo credentials filled! Click Sign In.', 'info');
+  // Pre-fill demo credentials — user must register this account first if it doesn't exist
+  const emailEl = document.getElementById('login-email');
+  const passEl = document.getElementById('login-password');
+  if (emailEl) emailEl.value = 'alex@demo.com';
+  if (passEl) passEl.value = 'demo123';
+  showToast('Demo credentials filled! If first time, register with these credentials first.', 'info');
 }
 
-function seedDemoData() {
-  const me = store.currentUser;
-  const jamie = store.data.users.find(u => u.email === 'jamie@demo.com');
-  const casey = store.data.users.find(u => u.email === 'casey@demo.com');
-  const morgan = store.data.users.find(u => u.email === 'morgan@demo.com');
-
-  if (!jamie || !casey || !morgan) return;
-
-  // Group 1: Apartment
-  const { group: apt } = store.createGroup('Apartment', '🏠', '#5bc5a7', ['jamie@demo.com', 'casey@demo.com']);
-  store.addExpense(apt.id, 'Monthly Rent', 2400, 'USD', me.id, 'equal', {}, 'utilities', '2026-03-01');
-  store.addExpense(apt.id, 'Electricity Bill', 120, 'USD', jamie.id, 'equal', {}, 'utilities', '2026-03-05');
-  store.addExpense(apt.id, 'Internet', 80, 'USD', casey.id, 'equal', {}, 'utilities', '2026-03-08');
-  store.addExpense(apt.id, 'Groceries', 245.50, 'USD', me.id, 'equal', {}, 'groceries', '2026-03-12');
-  store.addSettlement(apt.id, jamie.id, me.id, 150, 'USD');
-
-  // Group 2: Europe Trip
-  const { group: trip } = store.createGroup('Europe Trip', '✈️', '#3b82f6', ['jamie@demo.com', 'morgan@demo.com']);
-  store.addExpense(trip.id, 'Flight tickets', 1800, 'EUR', me.id, 'equal', {}, 'travel', '2026-02-15');
-  store.addExpense(trip.id, 'Hotel Paris', 650, 'EUR', morgan.id, 'equal', {}, 'accommodation', '2026-02-20');
-  store.addExpense(trip.id, 'Dinner at Le Jules Verne', 320, 'EUR', jamie.id, 'equal', {}, 'food', '2026-02-22');
-  store.addExpense(trip.id, 'Museum passes', 85, 'EUR', me.id, 'equal', {}, 'entertainment', '2026-02-23');
-
-  // Group 3: Weekend Cabin
-  const { group: cabin } = store.createGroup('Weekend Cabin', '⛺', '#f59e0b', ['casey@demo.com', 'morgan@demo.com']);
-  store.addExpense(cabin.id, 'Cabin rental', 450, 'USD', casey.id, 'equal', {}, 'accommodation', '2026-03-15');
-  store.addExpense(cabin.id, 'Groceries & supplies', 180, 'USD', me.id, 'equal', {}, 'groceries', '2026-03-15');
-  store.addExpense(cabin.id, 'Gas', 65, 'USD', morgan.id, 'equal', {}, 'transport', '2026-03-15');
-
-  store.logout();
-}
-
-function handleLogin() {
+async function handleLogin() {
   const email = document.getElementById('login-email')?.value?.trim();
   const password = document.getElementById('login-password')?.value;
   const errorEl = document.getElementById('auth-error');
+  const btn = document.querySelector('#auth-form-container .btn-primary');
 
   if (!email || !password) {
     errorEl.textContent = 'Please fill in all fields';
@@ -133,21 +84,25 @@ function handleLogin() {
     return;
   }
 
+  if (btn) { btn.disabled = true; btn.textContent = 'Signing in...'; }
+
   try {
-    store.login(email, password);
+    await api.login(email, password);
     errorEl.classList.add('hidden');
     initApp();
   } catch (e) {
     errorEl.textContent = e.message;
     errorEl.classList.remove('hidden');
+    if (btn) { btn.disabled = false; btn.textContent = 'Sign In'; }
   }
 }
 
-function handleRegister() {
+async function handleRegister() {
   const name = document.getElementById('reg-name')?.value?.trim();
   const email = document.getElementById('reg-email')?.value?.trim();
   const password = document.getElementById('reg-password')?.value;
   const errorEl = document.getElementById('auth-error');
+  const btn = document.querySelector('#auth-form-container .btn-primary');
 
   if (!name || !email || !password) {
     errorEl.textContent = 'Please fill in all fields';
@@ -165,14 +120,17 @@ function handleRegister() {
     return;
   }
 
+  if (btn) { btn.disabled = true; btn.textContent = 'Creating account...'; }
+
   try {
-    store.register(name, email, password);
+    await api.register(name, email, password);
     errorEl.classList.add('hidden');
     showToast('Account created! Welcome to Splitwise', 'success');
     initApp();
   } catch (e) {
     errorEl.textContent = e.message;
     errorEl.classList.remove('hidden');
+    if (btn) { btn.disabled = false; btn.textContent = 'Create Account'; }
   }
 }
 

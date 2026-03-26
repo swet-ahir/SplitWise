@@ -93,7 +93,7 @@ function renderSplitRows(members, splitType, customSplits = {}, amount = 0, curr
     return `
       <div class="member-split-row">
         ${renderAvatar(u, 'avatar-sm')}
-        <span class="name">${u.name}${u.id === store.currentUser?.id ? ' (you)' : ''}</span>
+        <span class="name">${u.name}${u.id === api.currentUser?.id ? ' (you)' : ''}</span>
         <div class="d-flex align-center gap-8">${inputHTML}</div>
       </div>`;
   }).join('');

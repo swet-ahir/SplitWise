@@ -1,12 +1,18 @@
 // ===== EXPENSE VIEWS =====
 
-function openAddExpenseModal(groupId) {
-  const g = store.getGroup(groupId);
-  if (!g) return;
-  const me = store.currentUser;
-  const members = g.members.map(id => store.getUser(id)).filter(Boolean);
+async function openAddExpenseModal(groupId) {
+  let g;
+  try {
+    g = await api.getGroup(groupId);
+  } catch (e) {
+    showToast('Failed to load group', 'error');
+    return;
+  }
 
-  window._expModal = { splitType: 'equal', customSplits: {}, currency: 'USD', paidBy: me.id };
+  const me = api.currentUser;
+  const members = g.members || [];
+
+  window._expModal = { splitType: 'equal', customSplits: {}, currency: 'USD', paidBy: me.id, members };
 
   openModal(`
     <div class="modal-header">
@@ -88,7 +94,6 @@ window.onExpCurrencyChange = function(groupId) {
 
 window.setSplitType = function(type, groupId) {
   window._expModal.splitType = type;
-  // Collect current custom splits before re-render
   collectSplitValues();
   document.querySelectorAll('.split-tab').forEach(el => el.classList.remove('active'));
   document.getElementById('split-' + type)?.classList.add('active');
@@ -96,15 +101,12 @@ window.setSplitType = function(type, groupId) {
 };
 
 window.refreshSplitRows = function(groupId) {
-  const g = store.getGroup(groupId);
-  if (!g) return;
-  const members = g.members.map(id => store.getUser(id)).filter(Boolean);
+  const members = window._expModal.members || [];
   const amount = parseFloat(document.getElementById('exp-amount')?.value || '0') || 0;
   const currency = window._expModal.currency || 'USD';
   collectSplitValues();
   const rows = document.getElementById('split-rows');
   if (rows) rows.innerHTML = renderSplitRows(members, window._expModal.splitType, window._expModal.customSplits, amount, currency);
-  // Add input listeners
   document.querySelectorAll('[data-split]').forEach(inp => {
     inp.addEventListener('input', () => validateSplits(amount, currency));
   });
@@ -136,7 +138,7 @@ function validateSplits(amount, currency) {
   }
 }
 
-window.handleAddExpense = function(groupId) {
+window.handleAddExpense = async function(groupId) {
   const desc = document.getElementById('exp-desc')?.value.trim();
   const amount = document.getElementById('exp-amount')?.value;
   const currency = document.getElementById('exp-currency')?.value || 'USD';
@@ -144,33 +146,58 @@ window.handleAddExpense = function(groupId) {
   const category = document.getElementById('exp-category')?.value || 'other';
   const date = document.getElementById('exp-date')?.value;
   const err = document.getElementById('exp-error');
+  const btn = document.querySelector('.modal-footer .btn-primary');
 
   if (!desc) { err.textContent = 'Enter a description'; err.classList.remove('hidden'); return; }
   if (!amount || parseFloat(amount) <= 0) { err.textContent = 'Enter a valid amount'; err.classList.remove('hidden'); return; }
 
   collectSplitValues();
 
+  if (btn) { btn.disabled = true; btn.textContent = 'Adding...'; }
+
   try {
-    store.addExpense(groupId, desc, amount, currency, paidBy, window._expModal.splitType, window._expModal.customSplits, category, date);
+    await api.addExpense(groupId, {
+      description: desc,
+      amount: parseFloat(amount),
+      currency,
+      paidBy,
+      splitType: window._expModal.splitType,
+      customSplits: window._expModal.customSplits,
+      category,
+      date,
+    });
     closeModal();
     showToast('Expense added!', 'success');
     navigate('group:' + groupId);
   } catch (e) {
     err.textContent = e.message;
     err.classList.remove('hidden');
+    if (btn) { btn.disabled = false; btn.textContent = 'Add Expense'; }
   }
 };
 
 // ===== EXPENSE DETAIL MODAL =====
-function openExpenseDetail(expenseId, groupId) {
-  const e = store.data.expenses.find(ex => ex.id === expenseId);
-  if (!e) return;
-  const g = store.getGroup(groupId);
-  const payer = store.getUser(e.paidBy);
-  const me = store.currentUser;
+async function openExpenseDetail(expenseId, groupId) {
+  // Find the expense from the current page's rendered data
+  // We need to fetch it fresh
+  let expenses, group;
+  try {
+    [expenses, group] = await Promise.all([
+      api.getGroupExpenses(groupId),
+      api.getGroup(groupId),
+    ]);
+  } catch (e) {
+    showToast('Failed to load expense details', 'error');
+    return;
+  }
+
+  const e = expenses.find(ex => ex.id === expenseId);
+  if (!e) { showToast('Expense not found', 'error'); return; }
+
+  const me = api.currentUser;
+  const payer = e.paidBy; // object {id, name, color}
   const cat = getCategoryInfo(e.category);
-  const members = g ? g.members.map(id => store.getUser(id)).filter(Boolean) : [];
-  const createdBy = store.getUser(e.createdBy);
+  const members = group.members || [];
 
   openModal(`
     <div class="modal-header">
@@ -196,8 +223,8 @@ function openExpenseDetail(expenseId, groupId) {
 
       <div style="font-size:0.875rem;font-weight:700;margin-bottom:10px;color:var(--text-secondary);text-transform:uppercase;letter-spacing:0.05em">Split Details</div>
       ${members.map(u => {
-        const share = e.splits?.[u.id] || 0;
-        const isPayer = u.id === e.paidBy;
+        const share = e.splits ? (e.splits[u.id] || 0) : 0;
+        const isPayer = payer && u.id === payer.id;
         const pct = e.amount > 0 ? ((share / e.amount) * 100).toFixed(1) : '0';
         return `
           <div class="list-item" style="padding:10px 0">
@@ -215,10 +242,10 @@ function openExpenseDetail(expenseId, groupId) {
       }).join('')}
 
       <div class="divider"></div>
-      <div class="text-muted text-small">Added ${timeAgo(e.createdAt)} by ${createdBy?.id === me.id ? 'you' : createdBy?.name || 'unknown'}</div>
+      <div class="text-muted text-small">Added ${timeAgo(e.createdAt)}</div>
     </div>
     <div class="modal-footer">
-      ${e.createdBy === me.id || store.getGroup(groupId)?.createdBy === me.id ? `<button class="btn btn-danger btn-sm" onclick="handleDeleteExpense('${expenseId}','${groupId}')">Delete</button>` : ''}
+      ${e.createdBy === me.id || group.createdBy === me.id ? `<button class="btn btn-danger btn-sm" onclick="handleDeleteExpense('${expenseId}','${groupId}')">Delete</button>` : ''}
       <button class="btn btn-secondary" onclick="closeModal()">Close</button>
     </div>
   `);
@@ -226,22 +253,34 @@ function openExpenseDetail(expenseId, groupId) {
 
 window.handleDeleteExpense = function(expenseId, groupId) {
   closeModal();
-  confirmDialog('Delete this expense? This cannot be undone.', () => {
-    store.deleteExpense(expenseId);
-    showToast('Expense deleted', 'info');
-    navigate('group:' + groupId);
+  confirmDialog('Delete this expense? This cannot be undone.', async () => {
+    try {
+      await api.deleteExpense(expenseId);
+      showToast('Expense deleted', 'info');
+      navigate('group:' + groupId);
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
   });
 };
 
 // ===== SETTLE MODAL =====
-function openSettleModal(groupId) {
-  const g = store.getGroup(groupId);
-  if (!g) return;
-  const me = store.currentUser;
-  const debts = store.getSimplifiedDebts(groupId);
-  const members = g.members.map(id => store.getUser(id)).filter(Boolean);
+async function openSettleModal(groupId) {
+  let group, balancesData;
+  try {
+    [group, balancesData] = await Promise.all([
+      api.getGroup(groupId),
+      api.getGroupBalances(groupId),
+    ]);
+  } catch (e) {
+    showToast('Failed to load settlement data', 'error');
+    return;
+  }
 
-  // Default: first debt involving me, or first debt
+  const me = api.currentUser;
+  const members = group.members || [];
+  const { simplified: debts, members: balanceMembers } = balancesData;
+
   const myDebt = debts.find(d => d.from === me.id) || debts.find(d => d.to === me.id) || debts[0] || null;
   const defaultFrom = myDebt?.from || me.id;
   const defaultTo = myDebt?.to || (members.find(u => u.id !== me.id)?.id || me.id);
@@ -259,12 +298,12 @@ function openSettleModal(groupId) {
         <div style="margin-bottom:20px">
           <div style="font-size:0.8rem;font-weight:700;text-transform:uppercase;letter-spacing:0.05em;color:var(--text-secondary);margin-bottom:8px">Suggested Settlements</div>
           ${debts.slice(0, 3).map(d => {
-            const from = store.getUser(d.from);
-            const to = store.getUser(d.to);
+            const from = balanceMembers ? balanceMembers.find(m => m.id === d.from) : null;
+            const to = balanceMembers ? balanceMembers.find(m => m.id === d.to) : null;
             return `<div class="settle-item" style="cursor:pointer" onclick="prefillSettle('${d.from}','${d.to}',${d.amount})">
               ${renderAvatar(from, 'avatar-sm')}
               <div class="settle-info flex-1">
-                <div class="settle-text text-small"><strong>${d.from === me.id ? 'You' : from?.name}</strong> → <strong>${d.to === me.id ? 'You' : to?.name}</strong></div>
+                <div class="settle-text text-small"><strong>${d.from === me.id ? 'You' : (from?.name || 'Unknown')}</strong> → <strong>${d.to === me.id ? 'You' : (to?.name || 'Unknown')}</strong></div>
               </div>
               <div class="settle-amount fw-bold text-danger text-small">${formatAmountUSD(d.amount)}</div>
             </div>`;
@@ -314,25 +353,35 @@ window.prefillSettle = function(from, to, amount) {
   if (amtEl) amtEl.value = amount;
 };
 
-window.handleSettle = function(groupId) {
+window.handleSettle = async function(groupId) {
   const from = document.getElementById('settle-from')?.value;
   const to = document.getElementById('settle-to')?.value;
   const amount = document.getElementById('settle-amount')?.value;
   const currency = document.getElementById('settle-currency')?.value || 'USD';
   const err = document.getElementById('settle-error');
+  const btn = document.querySelector('.modal-footer .btn-primary');
 
   if (from === to) { err.textContent = 'Payer and recipient must be different'; err.classList.remove('hidden'); return; }
   if (!amount || parseFloat(amount) <= 0) { err.textContent = 'Enter a valid amount'; err.classList.remove('hidden'); return; }
 
-  store.addSettlement(groupId, from, to, amount, currency);
-  closeModal();
-  showToast('Settlement recorded!', 'success');
-  navigate('group:' + groupId);
+  if (btn) { btn.disabled = true; btn.textContent = 'Recording...'; }
+
+  try {
+    await api.addSettlement(groupId, { from, to, amount: parseFloat(amount), currency });
+    closeModal();
+    showToast('Settlement recorded!', 'success');
+    navigate('group:' + groupId);
+  } catch (e) {
+    err.textContent = e.message;
+    err.classList.remove('hidden');
+    if (btn) { btn.disabled = false; btn.textContent = 'Record Payment'; }
+  }
 };
 
 window.quickSettle = function(groupId, from, to, amount) {
-  openSettleModal(groupId);
-  setTimeout(() => prefillSettle(from, to, amount), 50);
+  openSettleModal(groupId).then(() => {
+    setTimeout(() => prefillSettle(from, to, amount), 50);
+  });
 };
 
 window.openAddExpenseModal = openAddExpenseModal;
