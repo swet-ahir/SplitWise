@@ -39,14 +39,15 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
-// Initialize DB schema then start server
+// Start server immediately so Railway health check passes
+app.listen(PORT, () => {
+  console.log(`Splitwise running on port ${PORT}`);
+});
+
+// Init DB schema in background after server is up
 initSchema()
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`Splitwise running on port ${PORT}`);
-    });
-  })
+  .then(() => console.log('Database ready'))
   .catch(err => {
-    console.error('Failed to initialize database schema:', err);
-    process.exit(1);
+    console.error('Database init failed:', err.message);
+    // Don't exit — keep serving static files even if DB is down
   });
