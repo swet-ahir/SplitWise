@@ -286,7 +286,7 @@ function openCreateGroupModal() {
           <input class="form-control" id="member-email-input" type="email" placeholder="friend@example.com">
           <button class="btn btn-secondary" onclick="addMemberEmail()">Add</button>
         </div>
-        <div class="form-hint">Members must have a Splitwise account</div>
+        <div class="form-hint">If they don't have an account, we'll send them an invitation email.</div>
         <div id="member-tags" class="member-tags mt-8"></div>
       </div>
     </div>
@@ -353,12 +353,11 @@ window.handleCreateGroup = async function() {
   if (btn) { btn.disabled = true; btn.textContent = 'Creating...'; }
 
   try {
-    const { group, notFound } = await api.createGroup(name, window._groupModal.icon, window._groupModal.color, window._groupModal.emails);
-    // Update groups cache
+    const { group, invited } = await api.createGroup(name, window._groupModal.icon, window._groupModal.color, window._groupModal.emails);
     _groups = await api.getGroups().catch(() => _groups);
     closeModal();
-    if (notFound && notFound.length > 0) {
-      showToast(`Group created! ${notFound.length} email(s) not found: ${notFound.join(', ')}`, 'info');
+    if (invited && invited.length > 0) {
+      showToast(`Group created! Invitation sent to ${invited.length} email(s).`, 'success');
     } else {
       showToast('Group created!', 'success');
     }

@@ -127,22 +127,32 @@ router.post('/', async (req, res, next) => {
       [group.id, userId]
     );
 
-    // Add other members by email
-    const notFound = [];
+    // Add other members by email; send invitations to those without accounts
+    const invited = [];
+    const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
     for (const email of memberEmails) {
       if (!email || !email.trim()) continue;
+      const normalizedEmail = email.trim().toLowerCase();
       const userRes = await query(
         'SELECT id, name FROM users WHERE LOWER(email) = LOWER($1)',
-        [email.trim()]
+        [normalizedEmail]
       );
       if (userRes.rows.length === 0) {
-        notFound.push(email);
+        // No account — send invitation email
+        const token = crypto.randomBytes(32).toString('hex');
+        await query(
+          `INSERT INTO group_invitations (group_id, email, invited_by, token)
+           VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+          [group.id, normalizedEmail, userId, token]
+        );
+        const inviteUrl = `${appUrl}?invite=${token}`;
+        await sendInvitationEmail({ to: normalizedEmail, inviterName: req.user.name, groupName: group.name, inviteUrl });
+        invited.push(normalizedEmail);
         continue;
       }
       const member = userRes.rows[0];
       if (member.id === userId) continue; // skip self
 
-      // Check not already member
       const alreadyMember = await isMember(group.id, member.id);
       if (!alreadyMember) {
         await query(
@@ -170,7 +180,7 @@ router.post('/', async (req, res, next) => {
         createdAt: group.created_at,
         members,
       },
-      notFound,
+      invited,
     });
   } catch (err) {
     next(err);
