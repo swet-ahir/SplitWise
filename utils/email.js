@@ -16,7 +16,8 @@ async function sendInvitationEmail({ to, inviterName, groupName, inviteUrl }) {
     },
   });
 
-  await transporter.sendMail({
+  console.log(`[email] Sending invitation to ${to} via ${process.env.SMTP_HOST}`);
+  const info = await transporter.sendMail({
     from: `"Splitwise" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
     to,
     subject: `${inviterName} invited you to join "${groupName}" on Splitwise`,
@@ -29,6 +30,7 @@ async function sendInvitationEmail({ to, inviterName, groupName, inviteUrl }) {
       </div>
     `,
   });
+  console.log(`[email] Invitation sent to ${to}, messageId: ${info.messageId}`);
 }
 
 module.exports = { sendInvitationEmail };
