@@ -16,6 +16,9 @@ async function sendInvitationEmail({ to, inviterName, groupName, inviteUrl }) {
     },
   });
 
+  await transporter.verify().catch(err => {
+    throw new Error(`SMTP connection failed: ${err.message}`);
+  });
   console.log(`[email] Sending invitation to ${to} via ${process.env.SMTP_HOST}`);
   const info = await transporter.sendMail({
     from: `"Splitwise" <${process.env.SMTP_FROM || process.env.SMTP_USER}>`,
