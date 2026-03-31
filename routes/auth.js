@@ -99,4 +99,42 @@ router.post('/login', async (req, res, next) => {
   }
 });
 
+// POST /api/auth/demo
+router.post('/demo', async (req, res, next) => {
+  try {
+    const demoEmail = 'alex@demo.com';
+    const demoPassword = 'demo123';
+    const demoName = 'Alex (Demo)';
+
+    let result = await query(
+      'SELECT id, name, email, color, created_at FROM users WHERE LOWER(email) = $1',
+      [demoEmail]
+    );
+
+    if (result.rows.length === 0) {
+      const passwordHash = await bcrypt.hash(demoPassword, 10);
+      result = await query(
+        'INSERT INTO users (name, email, password_hash, color) VALUES ($1, $2, $3, $4) RETURNING id, name, email, color, created_at',
+        [demoName, demoEmail, passwordHash, '#5bc5a7']
+      );
+    }
+
+    const user = result.rows[0];
+    const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '7d' });
+
+    res.json({
+      user: {
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        color: user.color,
+        createdAt: user.created_at,
+      },
+      token,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

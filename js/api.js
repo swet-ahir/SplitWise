@@ -48,6 +48,14 @@ const api = {
     return data;
   },
 
+  async loginDemo() {
+    const data = await request('POST', '/auth/demo', {});
+    _currentUser = data.user;
+    localStorage.setItem('sw_token', data.token);
+    localStorage.setItem('sw_user', JSON.stringify(data.user));
+    return data;
+  },
+
   logout() {
     localStorage.removeItem('sw_token');
     localStorage.removeItem('sw_user');

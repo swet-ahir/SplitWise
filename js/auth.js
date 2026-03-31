@@ -63,13 +63,17 @@ function renderRegisterForm() {
   `;
 }
 
-function fillDemoAccount() {
-  // Pre-fill demo credentials — user must register this account first if it doesn't exist
-  const emailEl = document.getElementById('login-email');
-  const passEl = document.getElementById('login-password');
-  if (emailEl) emailEl.value = 'alex@demo.com';
-  if (passEl) passEl.value = 'demo123';
-  showToast('Demo credentials filled! If first time, register with these credentials first.', 'info');
+async function fillDemoAccount() {
+  const btn = document.querySelector('.btn-ghost.btn-sm');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading demo...'; }
+
+  try {
+    await api.loginDemo();
+    initApp();
+  } catch (e) {
+    showToast('Demo login failed: ' + e.message, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Use demo account'; }
+  }
 }
 
 async function handleLogin() {

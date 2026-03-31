@@ -1,6 +1,7 @@
 require('dotenv').config();
 const express = require('express');
 const path = require('path');
+console.log('[startup] DATABASE_URL present:', !!process.env.DATABASE_URL);
 const { initSchema } = require('./db');
 
 const app = express();
@@ -33,9 +34,10 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
-// Global error handler
+// Global error handler — always return JSON
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err);
+  console.error('Unhandled error:', err.message);
+  if (res.headersSent) return;
   res.status(500).json({ error: err.message || 'Internal server error' });
 });
 
@@ -44,10 +46,18 @@ app.listen(PORT, () => {
   console.log(`Splitwise running on port ${PORT}`);
 });
 
-// Init DB schema in background after server is up
-initSchema()
-  .then(() => console.log('Database ready'))
-  .catch(err => {
-    console.error('Database init failed:', err.message);
-    // Don't exit — keep serving static files even if DB is down
-  });
+// Init DB schema — retry up to 5 times with delay
+async function initWithRetry(attempts = 5) {
+  for (let i = 1; i <= attempts; i++) {
+    try {
+      await initSchema();
+      console.log('Database ready');
+      return;
+    } catch (err) {
+      console.error(`DB init attempt ${i}/${attempts} failed: ${err.message}`);
+      if (i < attempts) await new Promise(r => setTimeout(r, 3000));
+    }
+  }
+  console.error('All DB init attempts failed. API calls will fail until DB is reachable.');
+}
+initWithRetry();
