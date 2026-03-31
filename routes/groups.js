@@ -142,7 +142,10 @@ router.post('/', async (req, res, next) => {
         const token = crypto.randomBytes(32).toString('hex');
         await query(
           `INSERT INTO group_invitations (group_id, email, invited_by, token)
-           VALUES ($1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (group_id, email) DO UPDATE
+           SET token = EXCLUDED.token, invited_by = EXCLUDED.invited_by,
+               created_at = NOW(), expires_at = NOW() + INTERVAL '7 days', accepted_at = NULL`,
           [group.id, normalizedEmail, userId, token]
         );
         const inviteUrl = `${appUrl}?invite=${token}`;
@@ -293,21 +296,13 @@ router.post('/:id/members', async (req, res, next) => {
       const token = crypto.randomBytes(32).toString('hex');
       const normalizedEmail = email.trim().toLowerCase();
 
-      // Upsert invitation (replace existing pending invite for same group+email)
       await query(
         `INSERT INTO group_invitations (group_id, email, invited_by, token)
          VALUES ($1, $2, $3, $4)
-         ON CONFLICT DO NOTHING`,
+         ON CONFLICT (group_id, email) DO UPDATE
+         SET token = EXCLUDED.token, invited_by = EXCLUDED.invited_by,
+             created_at = NOW(), expires_at = NOW() + INTERVAL '7 days', accepted_at = NULL`,
         [id, normalizedEmail, req.user.id, token]
-      );
-
-      // If a row already existed (conflict), update it with a fresh token + expiry
-      await query(
-        `UPDATE group_invitations
-         SET token = $1, invited_by = $2, created_at = NOW(),
-             expires_at = NOW() + INTERVAL '7 days', accepted_at = NULL
-         WHERE group_id = $3 AND LOWER(email) = $4 AND accepted_at IS NULL`,
-        [token, req.user.id, id, normalizedEmail]
       );
 
       const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;

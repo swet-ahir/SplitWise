@@ -106,8 +106,20 @@ async function initSchema() {
       token VARCHAR(64) UNIQUE NOT NULL,
       created_at TIMESTAMPTZ DEFAULT NOW(),
       expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '7 days'),
-      accepted_at TIMESTAMPTZ
+      accepted_at TIMESTAMPTZ,
+      UNIQUE (group_id, email)
     )
+  `);
+
+  // Add unique constraint to existing tables if not already present
+  await query(`
+    DO $$ BEGIN
+      IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'group_invitations_group_id_email_key'
+      ) THEN
+        ALTER TABLE group_invitations ADD CONSTRAINT group_invitations_group_id_email_key UNIQUE (group_id, email);
+      END IF;
+    END $$
   `);
 
   console.log('Database schema initialized');
