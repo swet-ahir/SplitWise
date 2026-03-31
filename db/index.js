@@ -111,12 +111,18 @@ async function initSchema() {
     )
   `);
 
-  // Add unique constraint to existing tables if not already present
+  // Clean up duplicate invitations then add unique constraint if missing
   await query(`
     DO $$ BEGIN
       IF NOT EXISTS (
         SELECT 1 FROM pg_constraint WHERE conname = 'group_invitations_group_id_email_key'
       ) THEN
+        DELETE FROM group_invitations
+        WHERE id NOT IN (
+          SELECT DISTINCT ON (group_id, email) id
+          FROM group_invitations
+          ORDER BY group_id, email, created_at DESC
+        );
         ALTER TABLE group_invitations ADD CONSTRAINT group_invitations_group_id_email_key UNIQUE (group_id, email);
       END IF;
     END $$
