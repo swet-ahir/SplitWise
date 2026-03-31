@@ -16,11 +16,28 @@ function initApp() {
   document.getElementById('app-screen').classList.remove('hidden');
 
   // Load groups for sidebar, then render
-  api.getGroups().then(groups => {
+  api.getGroups().then(async groups => {
     _groups = groups;
+
+    // Accept pending invitation from email link
+    const pendingToken = sessionStorage.getItem('pendingInvitation');
+    if (pendingToken) {
+      sessionStorage.removeItem('pendingInvitation');
+      try {
+        const result = await api.acceptInvitation(pendingToken);
+        showToast(`Joined "${result.groupName}"!`, 'success');
+        _groups = await api.getGroups().catch(() => _groups);
+        renderSidebar();
+        navigate('group:' + result.groupId);
+        loadUnreadCount();
+        return;
+      } catch (e) {
+        // Ignore — already accepted or expired, fall through to normal load
+      }
+    }
+
     renderSidebar();
     navigate(currentRoute || 'dashboard');
-    // Load unread count async
     loadUnreadCount();
   }).catch(() => {
     renderSidebar();

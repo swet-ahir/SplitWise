@@ -484,7 +484,7 @@ async function openAddMemberModal(groupId) {
       <div class="form-group">
         <label class="form-label">Email Address</label>
         <input class="form-control" id="add-member-email" type="email" placeholder="friend@example.com">
-        <div class="form-hint">They must have a Splitwise account to be added.</div>
+        <div class="form-hint">If they don't have an account, we'll send them an invitation email.</div>
       </div>
     </div>
     <div class="modal-footer">
@@ -504,10 +504,14 @@ window.handleAddMember = async function(groupId) {
   if (btn) { btn.disabled = true; btn.textContent = 'Adding...'; }
 
   try {
-    const user = await api.addGroupMember(groupId, email);
+    const result = await api.addGroupMember(groupId, email);
     closeModal();
-    showToast(`${user.name} added to group!`, 'success');
-    navigate('group:' + groupId);
+    if (result.invited) {
+      showToast(`Invitation sent to ${result.email}!`, 'success');
+    } else {
+      showToast(`${result.name} added to group!`, 'success');
+      navigate('group:' + groupId);
+    }
   } catch (e) {
     err.textContent = e.message;
     err.classList.remove('hidden');

@@ -1,7 +1,9 @@
 const express = require('express');
+const crypto = require('crypto');
 const { query } = require('../db');
 const auth = require('../middleware/auth');
 const { calculateBalances, simplifyDebts } = require('../utils/balances');
+const { sendInvitationEmail } = require('../utils/email');
 
 const router = express.Router();
 router.use(auth);
@@ -275,8 +277,40 @@ router.post('/:id/members', async (req, res, next) => {
       'SELECT id, name, email, color FROM users WHERE LOWER(email) = LOWER($1)',
       [email.trim()]
     );
+
     if (userRes.rows.length === 0) {
-      return res.status(404).json({ error: 'No user found with that email' });
+      // User doesn't have an account — send invitation email
+      const token = crypto.randomBytes(32).toString('hex');
+      const normalizedEmail = email.trim().toLowerCase();
+
+      // Upsert invitation (replace existing pending invite for same group+email)
+      await query(
+        `INSERT INTO group_invitations (group_id, email, invited_by, token)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT DO NOTHING`,
+        [id, normalizedEmail, req.user.id, token]
+      );
+
+      // If a row already existed (conflict), update it with a fresh token + expiry
+      await query(
+        `UPDATE group_invitations
+         SET token = $1, invited_by = $2, created_at = NOW(),
+             expires_at = NOW() + INTERVAL '7 days', accepted_at = NULL
+         WHERE group_id = $3 AND LOWER(email) = $4 AND accepted_at IS NULL`,
+        [token, req.user.id, id, normalizedEmail]
+      );
+
+      const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
+      const inviteUrl = `${appUrl}?invite=${token}`;
+
+      await sendInvitationEmail({
+        to: normalizedEmail,
+        inviterName: req.user.name,
+        groupName: group.name,
+        inviteUrl,
+      });
+
+      return res.json({ invited: true, email: normalizedEmail });
     }
 
     const newMember = userRes.rows[0];

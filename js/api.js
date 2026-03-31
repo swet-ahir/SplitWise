@@ -69,6 +69,8 @@ const api = {
   async updateGroup(id, updates) { return request('PUT', `/groups/${id}`, updates); },
   async deleteGroup(id) { return request('DELETE', `/groups/${id}`); },
   async addGroupMember(groupId, email) { return request('POST', `/groups/${groupId}/members`, { email }); },
+  async getInvitation(token) { return request('GET', `/invitations/${token}`); },
+  async acceptInvitation(token) { return request('POST', `/invitations/${token}/accept`, {}); },
   async removeGroupMember(groupId, userId) { return request('DELETE', `/groups/${groupId}/members/${userId}`); },
   async getGroupBalances(groupId) { return request('GET', `/groups/${groupId}/balances`); },
 

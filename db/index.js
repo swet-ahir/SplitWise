@@ -97,6 +97,19 @@ async function initSchema() {
     )
   `);
 
+  await query(`
+    CREATE TABLE IF NOT EXISTS group_invitations (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      group_id UUID REFERENCES groups(id) ON DELETE CASCADE,
+      email VARCHAR(255) NOT NULL,
+      invited_by UUID REFERENCES users(id),
+      token VARCHAR(64) UNIQUE NOT NULL,
+      created_at TIMESTAMPTZ DEFAULT NOW(),
+      expires_at TIMESTAMPTZ DEFAULT (NOW() + INTERVAL '7 days'),
+      accepted_at TIMESTAMPTZ
+    )
+  `);
+
   console.log('Database schema initialized');
 }
 

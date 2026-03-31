@@ -1,9 +1,22 @@
 // ===== AUTH VIEWS =====
 
+// Check for invite token in URL and store it for after login/register
+(function captureInviteToken() {
+  const params = new URLSearchParams(window.location.search);
+  const token = params.get('invite');
+  if (token) {
+    sessionStorage.setItem('pendingInvitation', token);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('invite');
+    window.history.replaceState({}, '', url);
+  }
+})();
+
 function renderAuth() {
   const screen = document.getElementById('auth-screen');
   screen.innerHTML = `
     <div class="auth-card">
+      <div id="invite-banner"></div>
       <div class="auth-logo">
         <div class="logo-icon">💸</div>
         <h1>Splitwise</h1>
@@ -18,6 +31,25 @@ function renderAuth() {
       </div>
     </div>
   `;
+  loadInviteBanner();
+}
+
+async function loadInviteBanner() {
+  const token = sessionStorage.getItem('pendingInvitation');
+  if (!token) return;
+  try {
+    const inv = await api.getInvitation(token);
+    const banner = document.getElementById('invite-banner');
+    if (banner) {
+      banner.innerHTML = `<div class="alert alert-info" style="margin-bottom:16px;text-align:center">
+        <strong>${inv.inviterName}</strong> invited you to join <strong>"${inv.groupName}"</strong>.<br>
+        Sign in or create an account to join!
+      </div>`;
+    }
+  } catch (e) {
+    // Expired or invalid — clear it silently
+    sessionStorage.removeItem('pendingInvitation');
+  }
 }
 
 function switchAuthTab(tab) {
@@ -151,3 +183,4 @@ window.switchAuthTab = switchAuthTab;
 window.handleLogin = handleLogin;
 window.handleRegister = handleRegister;
 window.fillDemoAccount = fillDemoAccount;
+window.loadInviteBanner = loadInviteBanner;

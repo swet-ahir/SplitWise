@@ -21,6 +21,7 @@ const expensesRouter = require('./routes/expenses');
 const settlementsRouter = require('./routes/settlements');
 const notificationsRouter = require('./routes/notifications');
 const usersRouter = require('./routes/users');
+const invitationsRouter = require('./routes/invitations');
 
 app.use('/api/auth', authRouter);
 app.use('/api/groups', groupsRouter);
@@ -28,6 +29,7 @@ app.use('/api/expenses', expensesRouter);
 app.use('/api/settlements', settlementsRouter);
 app.use('/api/notifications', notificationsRouter);
 app.use('/api/users', usersRouter);
+app.use('/api/invitations', invitationsRouter);
 
 // SPA fallback — serve index.html for non-API routes
 app.get('*', (req, res) => {
