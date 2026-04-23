@@ -75,10 +75,11 @@ async function renderGroupDetail(groupId) {
   try {
     const me = api.currentUser;
 
-    const [group, expenses, balancesData] = await Promise.all([
+    const [group, expenses, balancesData, settlements] = await Promise.all([
       api.getGroup(groupId),
       api.getGroupExpenses(groupId),
       api.getGroupBalances(groupId),
+      api.getGroupSettlements(groupId),
     ]);
 
     const { net, simplified: debts, members: balanceMembers } = balancesData;
@@ -145,6 +146,15 @@ async function renderGroupDetail(groupId) {
                 : debts.map(d => renderDebtRow(d, groupId, balanceMembers, me)).join('')
               }
             </div>
+            ${settlements.length > 0 ? `
+            <div class="divider" style="margin:0"></div>
+            <div class="card-header" style="padding-top:14px;padding-bottom:10px">
+              <span style="font-size:0.875rem;font-weight:600;color:var(--text-secondary)">Settlement History</span>
+              <span class="badge badge-gray">${settlements.length}</span>
+            </div>
+            <div class="card-body" style="padding-top:0">
+              ${settlements.map(s => renderSettlementHistoryItem(s, me)).join('')}
+            </div>` : ''}
           </div>
 
           <!-- Members -->
@@ -224,6 +234,37 @@ function renderDebtRow(d, groupId, members, me) {
         <div class="settle-amount">${formatAmountUSD(d.amount)}</div>
       </div>
       ${(d.from === me.id || d.to === me.id) ? `<button class="btn btn-sm btn-primary" onclick="quickSettle('${groupId}','${d.from}','${d.to}',${d.amount})">Settle</button>` : ''}
+    </div>`;
+}
+
+function renderSettlementHistoryItem(s, me) {
+  const from = s.fromUser;
+  const to = s.toUser;
+  const isFromMe = from && from.id === me.id;
+  const isToMe = to && to.id === me.id;
+
+  let actionText;
+  if (isFromMe) {
+    actionText = `You paid <strong>${to?.name || 'someone'}</strong>`;
+  } else if (isToMe) {
+    actionText = `<strong>${from?.name || 'Someone'}</strong> paid you`;
+  } else {
+    actionText = `<strong>${from?.name || 'Someone'}</strong> paid <strong>${to?.name || 'someone'}</strong>`;
+  }
+
+  return `
+    <div class="settle-item" style="margin-bottom:8px">
+      ${renderAvatar(from, 'avatar-sm')}
+      <div class="settle-info">
+        <div class="settle-text">${actionText}</div>
+        <div class="text-muted text-small">${formatDate(s.date || s.createdAt)}</div>
+      </div>
+      <div class="text-right">
+        <div class="fw-bold">${formatAmount(s.amount, s.currency)}</div>
+        <div class="text-small ${isFromMe ? 'text-danger' : isToMe ? 'text-success' : 'text-muted'}">
+          ${isFromMe ? 'you paid' : isToMe ? 'received' : 'settled'}
+        </div>
+      </div>
     </div>`;
 }
 
