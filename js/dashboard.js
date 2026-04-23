@@ -15,14 +15,19 @@ async function renderDashboard() {
 
     // Fetch recent expenses and settlements for all groups (up to 5 per group)
     let recentItems = [];
-    const expenseFetches = groups.slice(0, 6).map(g =>
+    const allFetches = groups.slice(0, 6).flatMap(g => [
       api.getGroupExpenses(g.id).then(expenses => {
         expenses.slice(0, 5).forEach(e => {
           recentItems.push({ ...e, _type: 'expense', groupName: g.name, groupIcon: g.icon });
         });
-      }).catch(() => {})
-    );
-    await Promise.all(expenseFetches);
+      }).catch(() => {}),
+      api.getGroupSettlements(g.id).then(settlements => {
+        settlements.slice(0, 5).forEach(s => {
+          recentItems.push({ ...s, _type: 'settlement', groupName: g.name, groupIcon: g.icon });
+        });
+      }).catch(() => {}),
+    ]);
+    await Promise.all(allFetches);
 
     recentItems.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     recentItems = recentItems.slice(0, 10);
@@ -220,6 +225,29 @@ function renderActivityItem(item, me) {
           <span class="text-muted text-small">${isMyExpense ? 'You paid' : (payer?.name || 'Someone') + ' paid'} ${formatAmount(item.amount, item.currency)}</span>
           ${!isMyExpense && myShare > 0 ? `<span class="text-danger text-small"> · your share: ${formatAmount(myShare, item.currency)}</span>` : ''}
           ${isMyExpense ? `<span class="text-success text-small"> · you paid</span>` : ''}
+          <div class="activity-time">${timeAgo(item.createdAt)} · ${item.groupName}</div>
+        </div>
+      </div>`;
+  }
+  if (item._type === 'settlement') {
+    const from = item.fromUser;
+    const to = item.toUser;
+    const isFromMe = from && from.id === me.id;
+    const isToMe = to && to.id === me.id;
+    let actionText;
+    if (isFromMe) {
+      actionText = `You paid <strong>${to?.name || 'someone'}</strong>`;
+    } else if (isToMe) {
+      actionText = `<strong>${from?.name || 'Someone'}</strong> paid you`;
+    } else {
+      actionText = `<strong>${from?.name || 'Someone'}</strong> paid <strong>${to?.name || 'someone'}</strong>`;
+    }
+    return `
+      <div class="activity-item">
+        <div class="activity-icon" style="background:#5bc5a720">💸</div>
+        <div class="activity-text flex-1">
+          ${actionText} ${formatAmount(item.amount, item.currency)}<br>
+          <span class="text-muted text-small">Settlement · <em>${item.groupName}</em></span>
           <div class="activity-time">${timeAgo(item.createdAt)} · ${item.groupName}</div>
         </div>
       </div>`;
