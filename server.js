@@ -1,14 +1,20 @@
 require('dotenv').config();
+
+// Log environment state immediately so Railway deployment logs show what was received
+console.log('[startup] DATABASE_URL present:', !!process.env.DATABASE_URL);
+console.log('[startup] JWT_SECRET present:', !!process.env.JWT_SECRET, '| length:', (process.env.JWT_SECRET || '').length);
+
+if (!process.env.JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is not set. Add it in Railway → your service → Variables.');
+  process.exit(1);
+}
+
 const express = require('express');
 const path = require('path');
-console.log('[startup] DATABASE_URL present:', !!process.env.DATABASE_URL);
 const { initSchema } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-
-// Note: Set JWT_SECRET env var in production. Default is 'splitwise_secret_key'.
-// For Railway: add DATABASE_URL and JWT_SECRET in environment variables.
 
 // Middleware
 app.use(express.json());

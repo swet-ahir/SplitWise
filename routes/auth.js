@@ -5,10 +5,6 @@ const { query } = require('../db');
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  console.error('FATAL: JWT_SECRET environment variable is not set. Set it before starting the server.');
-  process.exit(1);
-}
 
 // POST /api/auth/register
 router.post('/register', async (req, res, next) => {
