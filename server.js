@@ -1,13 +1,24 @@
 require('dotenv').config();
 
-// Log environment state immediately so Railway deployment logs show what was received
-console.log('[startup] DATABASE_URL present:', !!process.env.DATABASE_URL);
-console.log('[startup] JWT_SECRET present:', !!process.env.JWT_SECRET, '| length:', (process.env.JWT_SECRET || '').length);
-
+// If JWT_SECRET is not explicitly set, derive a stable one from DATABASE_URL.
+// This produces a strong, consistent secret tied to the database instance —
+// the same DATABASE_URL always yields the same secret, so tokens survive restarts.
 if (!process.env.JWT_SECRET) {
-  console.error('FATAL: JWT_SECRET environment variable is not set. Add it in Railway → your service → Variables.');
-  process.exit(1);
+  if (!process.env.DATABASE_URL) {
+    console.error('FATAL: Neither JWT_SECRET nor DATABASE_URL is set. Cannot start.');
+    process.exit(1);
+  }
+  const crypto = require('crypto');
+  process.env.JWT_SECRET = crypto
+    .createHash('sha256')
+    .update(process.env.DATABASE_URL)
+    .digest('hex');
+  console.log('[startup] JWT_SECRET derived from DATABASE_URL (set JWT_SECRET env var to override)');
+} else {
+  console.log('[startup] JWT_SECRET loaded from environment');
 }
+
+console.log('[startup] DATABASE_URL present:', !!process.env.DATABASE_URL);
 
 const express = require('express');
 const path = require('path');
