@@ -1,22 +1,23 @@
 // ===== CONSTANTS & PURE HELPERS =====
 // Extracted from store.js for use without the data store
 
+// Exchange rates vs USD — last updated 2026-04-23. Must stay in sync with utils/balances.js.
 const EXCHANGE_RATES = {
   USD: 1,
-  EUR: 0.92,
+  EUR: 0.93,
   GBP: 0.79,
-  INR: 83.2,
-  CAD: 1.36,
-  AUD: 1.54,
-  JPY: 149.5,
-  CHF: 0.88,
-  CNY: 7.24,
-  SGD: 1.35,
-  MXN: 17.1,
-  BRL: 4.97,
-  KRW: 1323,
-  SEK: 10.4,
-  NOK: 10.6,
+  INR: 84.5,
+  CAD: 1.38,
+  AUD: 1.57,
+  JPY: 154.2,
+  CHF: 0.90,
+  CNY: 7.27,
+  SGD: 1.34,
+  MXN: 17.8,
+  BRL: 5.10,
+  KRW: 1370,
+  SEK: 10.8,
+  NOK: 10.9,
 };
 
 const CURRENCIES = {
