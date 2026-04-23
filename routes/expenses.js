@@ -1,6 +1,9 @@
 const express = require('express');
 const { query } = require('../db');
 const auth = require('../middleware/auth');
+const { EXCHANGE_RATES } = require('../utils/balances');
+
+const SUPPORTED_CURRENCIES = new Set(Object.keys(EXCHANGE_RATES));
 
 const router = express.Router();
 router.use(auth);
@@ -89,6 +92,9 @@ router.post('/groups/:groupId/expenses', async (req, res, next) => {
     if (!description || !description.trim()) return res.status(400).json({ error: 'Description is required' });
     const amt = parseFloat(amount);
     if (isNaN(amt) || amt <= 0) return res.status(400).json({ error: 'Invalid amount' });
+    if (!SUPPORTED_CURRENCIES.has(currency)) {
+      return res.status(400).json({ error: `Unsupported currency "${currency}". Supported: ${[...SUPPORTED_CURRENCIES].join(', ')}` });
+    }
 
     // Get group members
     const membersRes = await query(
@@ -169,6 +175,26 @@ router.post('/groups/:groupId/expenses', async (req, res, next) => {
 
     const expenseObj = await buildExpenseObject(expense);
     res.status(201).json(expenseObj);
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/expenses/expenses/:id — fetch a single expense
+router.get('/expenses/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const expRes = await query('SELECT * FROM expenses WHERE id = $1', [id]);
+    if (expRes.rows.length === 0) return res.status(404).json({ error: 'Expense not found' });
+    const expense = expRes.rows[0];
+
+    const member = await isMember(expense.group_id, userId);
+    if (!member) return res.status(403).json({ error: 'Not a member of this group' });
+
+    const expenseObj = await buildExpenseObject(expense);
+    res.json(expenseObj);
   } catch (err) {
     next(err);
   }

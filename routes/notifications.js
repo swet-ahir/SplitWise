@@ -28,7 +28,7 @@ router.get('/', async (req, res, next) => {
   }
 });
 
-// PUT /api/notifications/read-all — mark all as read
+// PUT /api/notifications/read-all — mark all as read (must be before /:id to avoid conflict)
 router.put('/read-all', async (req, res, next) => {
   try {
     const userId = req.user.id;
@@ -37,6 +37,22 @@ router.put('/read-all', async (req, res, next) => {
       [userId]
     );
     res.json({ message: 'All notifications marked as read' });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/notifications/:id — mark a single notification as read
+router.put('/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+    const result = await query(
+      'UPDATE notifications SET read = TRUE WHERE id = $1 AND user_id = $2 RETURNING id',
+      [id, userId]
+    );
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Notification not found' });
+    res.json({ message: 'Notification marked as read' });
   } catch (err) {
     next(err);
   }

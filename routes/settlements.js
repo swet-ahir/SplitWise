@@ -1,6 +1,9 @@
 const express = require('express');
 const { query } = require('../db');
 const auth = require('../middleware/auth');
+const { EXCHANGE_RATES } = require('../utils/balances');
+
+const SUPPORTED_CURRENCIES = new Set(Object.keys(EXCHANGE_RATES));
 
 const router = express.Router();
 router.use(auth);
@@ -83,6 +86,9 @@ router.post('/groups/:groupId/settlements', async (req, res, next) => {
     const amt = parseFloat(amount);
     if (isNaN(amt) || amt <= 0) {
       return res.status(400).json({ error: 'Invalid amount' });
+    }
+    if (!SUPPORTED_CURRENCIES.has(currency)) {
+      return res.status(400).json({ error: `Unsupported currency "${currency}". Supported: ${[...SUPPORTED_CURRENCIES].join(', ')}` });
     }
 
     const date = new Date().toISOString().split('T')[0];

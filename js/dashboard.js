@@ -179,9 +179,9 @@ async function loadOutstandingBalances(groups, me) {
           ${renderAvatar(other, 'avatar-sm')}
           <div class="balance-info">
             <div class="balance-text">
-              ${youOwe ? `You owe <strong>${other?.name || 'Unknown'}</strong>` : `<strong>${other?.name || 'Unknown'}</strong> owes you`}
+              ${youOwe ? `You owe <strong>${escapeHTML(other?.name || 'Unknown')}</strong>` : `<strong>${escapeHTML(other?.name || 'Unknown')}</strong> owes you`}
             </div>
-            <div class="text-muted text-small">${d.groupName}</div>
+            <div class="text-muted text-small">${escapeHTML(d.groupName)}</div>
           </div>
           <div class="balance-amount ${youOwe ? 'owe' : 'owed'}">${formatAmountUSD(d.amount)}</div>
         </div>`;
@@ -204,7 +204,7 @@ function renderGroupRow(g, me, byGroup) {
     <div class="list-item" style="padding:14px 24px;cursor:pointer" onclick="navigate('group:${g.id}')">
       <div class="group-icon" style="background:${g.color}20;width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px">${g.icon}</div>
       <div class="list-item-main">
-        <div class="list-item-title">${g.name}</div>
+        <div class="list-item-title">${escapeHTML(g.name)}</div>
         <div class="list-item-sub">${memberCount} member${memberCount !== 1 ? 's' : ''}</div>
       </div>
       <div class="list-item-right">${balStr}</div>
@@ -221,11 +221,11 @@ function renderActivityItem(item, me) {
       <div class="activity-item">
         <div class="activity-icon" style="background:${cat.color}20">${cat.icon}</div>
         <div class="activity-text flex-1">
-          <strong>${item.description}</strong> in <em>${item.groupName}</em><br>
-          <span class="text-muted text-small">${isMyExpense ? 'You paid' : (payer?.name || 'Someone') + ' paid'} ${formatAmount(item.amount, item.currency)}</span>
+          <strong>${escapeHTML(item.description)}</strong> in <em>${escapeHTML(item.groupName)}</em><br>
+          <span class="text-muted text-small">${isMyExpense ? 'You paid' : escapeHTML(payer?.name || 'Someone') + ' paid'} ${formatAmount(item.amount, item.currency)}</span>
           ${!isMyExpense && myShare > 0 ? `<span class="text-danger text-small"> · your share: ${formatAmount(myShare, item.currency)}</span>` : ''}
           ${isMyExpense ? `<span class="text-success text-small"> · you paid</span>` : ''}
-          <div class="activity-time">${timeAgo(item.createdAt)} · ${item.groupName}</div>
+          <div class="activity-time">${timeAgo(item.createdAt)} · ${escapeHTML(item.groupName)}</div>
         </div>
       </div>`;
   }
@@ -236,19 +236,19 @@ function renderActivityItem(item, me) {
     const isToMe = to && to.id === me.id;
     let actionText;
     if (isFromMe) {
-      actionText = `You paid <strong>${to?.name || 'someone'}</strong>`;
+      actionText = `You paid <strong>${escapeHTML(to?.name || 'someone')}</strong>`;
     } else if (isToMe) {
-      actionText = `<strong>${from?.name || 'Someone'}</strong> paid you`;
+      actionText = `<strong>${escapeHTML(from?.name || 'Someone')}</strong> paid you`;
     } else {
-      actionText = `<strong>${from?.name || 'Someone'}</strong> paid <strong>${to?.name || 'someone'}</strong>`;
+      actionText = `<strong>${escapeHTML(from?.name || 'Someone')}</strong> paid <strong>${escapeHTML(to?.name || 'someone')}</strong>`;
     }
     return `
       <div class="activity-item">
         <div class="activity-icon" style="background:#5bc5a720">💸</div>
         <div class="activity-text flex-1">
           ${actionText} ${formatAmount(item.amount, item.currency)}<br>
-          <span class="text-muted text-small">Settlement · <em>${item.groupName}</em></span>
-          <div class="activity-time">${timeAgo(item.createdAt)} · ${item.groupName}</div>
+          <span class="text-muted text-small">Settlement · <em>${escapeHTML(item.groupName)}</em></span>
+          <div class="activity-time">${timeAgo(item.createdAt)} · ${escapeHTML(item.groupName)}</div>
         </div>
       </div>`;
   }

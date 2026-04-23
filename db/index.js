@@ -111,6 +111,26 @@ async function initSchema() {
     )
   `);
 
+  // Performance index: "which groups does user X belong to?" runs on every dashboard load
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_group_members_user_id ON group_members(user_id)
+  `);
+
+  // Performance index: expense lookups by group
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_expenses_group_id ON expenses(group_id)
+  `);
+
+  // Performance index: settlement lookups by group
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_settlements_group_id ON settlements(group_id)
+  `);
+
+  // Performance index: notifications by user
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)
+  `);
+
   // Clean up duplicate invitations then add unique constraint if missing
   await query(`
     DO $$ BEGIN

@@ -55,17 +55,18 @@ function renderNotificationItem(n) {
   const groupId = n.meta?.groupId || '';
 
   return `
-    <div class="notification-item ${n.read ? '' : 'unread'}" onclick="handleNotificationClick('${groupId}')">
+    <div class="notification-item ${n.read ? '' : 'unread'}" onclick="handleNotificationClick('${n.id}','${groupId}')">
       <div style="width:36px;height:36px;border-radius:50%;background:${bg};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${icon}</div>
       <div class="notification-content flex-1">
-        <div class="title">${n.message}</div>
+        <div class="title">${escapeHTML(n.message)}</div>
         <div class="time">${timeAgo(n.createdAt)}</div>
       </div>
       ${!n.read ? '<div class="notification-dot"></div>' : ''}
     </div>`;
 }
 
-window.handleNotificationClick = function(groupId) {
+window.handleNotificationClick = function(notificationId, groupId) {
+  if (notificationId) api.markNotificationRead(notificationId).catch(() => {});
   if (groupId) navigate('group:' + groupId);
 };
 

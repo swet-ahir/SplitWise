@@ -342,7 +342,8 @@ router.post('/:id/members', async (req, res, next) => {
   }
 });
 
-// DELETE /api/groups/:id/members/:userId — remove member (creator only, can't remove creator)
+// DELETE /api/groups/:id/members/:userId — remove member
+// Creator can remove anyone except themselves; any member can remove themselves (leave).
 router.delete('/:id/members/:userId', async (req, res, next) => {
   try {
     const { id, userId: targetUserId } = req.params;
@@ -350,15 +351,25 @@ router.delete('/:id/members/:userId', async (req, res, next) => {
 
     const group = await getGroupWithCreator(id);
     if (!group) return res.status(404).json({ error: 'Group not found' });
-    if (group.created_by !== userId) return res.status(403).json({ error: 'Only the group creator can remove members' });
-    if (targetUserId === group.created_by) return res.status(400).json({ error: 'Cannot remove the group creator' });
+
+    const isSelfRemoval = targetUserId === userId;
+
+    if (!isSelfRemoval && group.created_by !== userId) {
+      return res.status(403).json({ error: 'Only the group creator can remove other members' });
+    }
+    if (targetUserId === group.created_by) {
+      return res.status(400).json({ error: 'The group creator cannot be removed. Delete the group instead.' });
+    }
+
+    const memberExists = await isMember(id, targetUserId);
+    if (!memberExists) return res.status(404).json({ error: 'Member not found in this group' });
 
     await query(
       'DELETE FROM group_members WHERE group_id = $1 AND user_id = $2',
       [id, targetUserId]
     );
 
-    res.json({ message: 'Member removed' });
+    res.json({ message: isSelfRemoval ? 'You have left the group' : 'Member removed' });
   } catch (err) {
     next(err);
   }

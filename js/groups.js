@@ -49,7 +49,7 @@ function renderGroupCard(g, me) {
       <div class="group-card-header">
         <div class="group-icon" style="background:${g.color}20;font-size:22px">${g.icon}</div>
         <div style="flex:1;min-width:0">
-          <div class="group-name">${g.name}</div>
+          <div class="group-name">${escapeHTML(g.name)}</div>
           <div class="group-members">${members.length} member${members.length !== 1 ? 's' : ''} · ${expenseCount} expense${expenseCount !== 1 ? 's' : ''}</div>
         </div>
       </div>
@@ -85,6 +85,8 @@ async function renderGroupDetail(groupId) {
     const { net, simplified: debts, members: balanceMembers } = balancesData;
     const members = group.members || [];
     const bal = net[me.id] || 0;
+    const currencies = [...new Set(expenses.map(e => e.currency).filter(Boolean))];
+    const isMultiCurrency = currencies.length > 1;
 
     document.getElementById('page-title').textContent = group.name;
     document.getElementById('page-content').innerHTML = `
@@ -92,7 +94,7 @@ async function renderGroupDetail(groupId) {
       <div class="detail-header">
         <div class="detail-icon" style="background:${group.color}20">${group.icon}</div>
         <div>
-          <div class="detail-title">${group.name}</div>
+          <div class="detail-title">${escapeHTML(group.name)}</div>
           <div class="detail-sub">${members.length} members · Created ${formatDate(group.createdAt)}</div>
         </div>
         <div style="margin-left:auto;display:flex;gap:8px">
@@ -131,6 +133,7 @@ async function renderGroupDetail(groupId) {
                   ${Math.abs(bal) < 0.01 ? 'All settled up!' : bal > 0 ? 'others owe you' : 'you owe others'}
                 </div>
               </div>
+              ${isMultiCurrency ? `<div class="text-muted text-small mt-8" style="text-align:center;font-style:italic">⚠️ Multi-currency group — balances are approximate (converted to USD using fixed rates)</div>` : ''}
             </div>
           </div>
 
@@ -210,8 +213,8 @@ function renderExpenseItem(e, me, g) {
     <div class="expense-item" onclick="openExpenseDetail('${e.id}', '${g.id}')">
       <div class="expense-icon" style="background:${cat.color}20">${cat.icon}</div>
       <div class="expense-info">
-        <div class="expense-name">${e.description}</div>
-        <div class="expense-meta">${payer ? (isMyExpense ? 'You' : payer.name) + ' paid' : 'Unknown'} · ${formatDate(e.date)}</div>
+        <div class="expense-name">${escapeHTML(e.description)}</div>
+        <div class="expense-meta">${payer ? (isMyExpense ? 'You' : escapeHTML(payer.name)) + ' paid' : 'Unknown'} · ${formatDate(e.date)}</div>
       </div>
       <div class="expense-amount">
         <div class="expense-total">${formatAmount(e.amount, e.currency)}</div>
@@ -229,7 +232,7 @@ function renderDebtRow(d, groupId, members, me) {
       ${renderAvatar(from, 'avatar-sm')}
       <div class="settle-info">
         <div class="settle-text">
-          <strong>${d.from === me.id ? 'You' : (from?.name || 'Unknown')}</strong> → <strong>${d.to === me.id ? 'You' : (to?.name || 'Unknown')}</strong>
+          <strong>${d.from === me.id ? 'You' : escapeHTML(from?.name || 'Unknown')}</strong> → <strong>${d.to === me.id ? 'You' : escapeHTML(to?.name || 'Unknown')}</strong>
         </div>
         <div class="settle-amount">${formatAmountUSD(d.amount)}</div>
       </div>
@@ -245,11 +248,11 @@ function renderSettlementHistoryItem(s, me) {
 
   let actionText;
   if (isFromMe) {
-    actionText = `You paid <strong>${to?.name || 'someone'}</strong>`;
+    actionText = `You paid <strong>${escapeHTML(to?.name || 'someone')}</strong>`;
   } else if (isToMe) {
-    actionText = `<strong>${from?.name || 'Someone'}</strong> paid you`;
+    actionText = `<strong>${escapeHTML(from?.name || 'Someone')}</strong> paid you`;
   } else {
-    actionText = `<strong>${from?.name || 'Someone'}</strong> paid <strong>${to?.name || 'someone'}</strong>`;
+    actionText = `<strong>${escapeHTML(from?.name || 'Someone')}</strong> paid <strong>${escapeHTML(to?.name || 'someone')}</strong>`;
   }
 
   return `
@@ -282,8 +285,8 @@ function renderMemberRow(u, groupId, g, me, net) {
     <div class="list-item">
       ${renderAvatar(u)}
       <div class="list-item-main">
-        <div class="list-item-title">${u.name} ${u.id === me.id ? '(you)' : ''} ${u.id === g.createdBy ? '<span class="badge badge-blue" style="margin-left:4px">Admin</span>' : ''}</div>
-        <div class="list-item-sub">${u.email}</div>
+        <div class="list-item-title">${escapeHTML(u.name)} ${u.id === me.id ? '(you)' : ''} ${u.id === g.createdBy ? '<span class="badge badge-blue" style="margin-left:4px">Admin</span>' : ''}</div>
+        <div class="list-item-sub">${escapeHTML(u.email)}</div>
       </div>
       <div class="d-flex align-center gap-8">
         ${balStr}

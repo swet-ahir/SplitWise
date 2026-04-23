@@ -16,7 +16,7 @@ async function openAddExpenseModal(groupId) {
 
   openModal(`
     <div class="modal-header">
-      <h3>Add Expense to ${g.name}</h3>
+      <h3>Add Expense to ${escapeHTML(g.name)}</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
@@ -153,6 +153,23 @@ window.handleAddExpense = async function(groupId) {
 
   collectSplitValues();
 
+  // Validate splits before hitting the API
+  if (window._expModal.splitType === 'percentage') {
+    const totalPct = Object.values(window._expModal.customSplits).reduce((a, b) => a + (parseFloat(b) || 0), 0);
+    if (Math.abs(totalPct - 100) > 0.01) {
+      err.textContent = `Percentages must add up to 100% (currently ${totalPct.toFixed(1)}%)`;
+      err.classList.remove('hidden');
+      return;
+    }
+  } else if (window._expModal.splitType === 'exact') {
+    const totalExact = Object.values(window._expModal.customSplits).reduce((a, b) => a + (parseFloat(b) || 0), 0);
+    if (Math.abs(totalExact - parseFloat(amount)) > 0.01) {
+      err.textContent = `Amounts must add up to ${formatAmount(parseFloat(amount), currency)} (currently ${formatAmount(totalExact, currency)})`;
+      err.classList.remove('hidden');
+      return;
+    }
+  }
+
   if (btn) { btn.disabled = true; btn.textContent = 'Adding...'; }
 
   try {
@@ -178,12 +195,10 @@ window.handleAddExpense = async function(groupId) {
 
 // ===== EXPENSE DETAIL MODAL =====
 async function openExpenseDetail(expenseId, groupId) {
-  // Find the expense from the current page's rendered data
-  // We need to fetch it fresh
-  let expenses, group;
+  let e, group;
   try {
-    [expenses, group] = await Promise.all([
-      api.getGroupExpenses(groupId),
+    [e, group] = await Promise.all([
+      api.getExpense(expenseId),
       api.getGroup(groupId),
     ]);
   } catch (e) {
@@ -191,7 +206,6 @@ async function openExpenseDetail(expenseId, groupId) {
     return;
   }
 
-  const e = expenses.find(ex => ex.id === expenseId);
   if (!e) { showToast('Expense not found', 'error'); return; }
 
   const me = api.currentUser;
@@ -201,7 +215,7 @@ async function openExpenseDetail(expenseId, groupId) {
 
   openModal(`
     <div class="modal-header">
-      <h3>${e.description}</h3>
+      <h3>${escapeHTML(e.description)}</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
@@ -216,7 +230,7 @@ async function openExpenseDetail(expenseId, groupId) {
       <div class="d-flex align-center gap-12 mb-16" style="padding:14px;background:var(--surface-2);border-radius:var(--radius)">
         ${renderAvatar(payer)}
         <div>
-          <div style="font-size:0.875rem;font-weight:600">${payer?.id === me.id ? 'You paid' : (payer?.name || 'Unknown') + ' paid'}</div>
+          <div style="font-size:0.875rem;font-weight:600">${payer?.id === me.id ? 'You paid' : escapeHTML(payer?.name || 'Unknown') + ' paid'}</div>
           <div class="text-muted text-small">${formatAmount(e.amount, e.currency)} total</div>
         </div>
       </div>
@@ -230,7 +244,7 @@ async function openExpenseDetail(expenseId, groupId) {
           <div class="list-item" style="padding:10px 0">
             ${renderAvatar(u, 'avatar-sm')}
             <div class="list-item-main">
-              <div class="list-item-title">${u.name}${u.id === me.id ? ' (you)' : ''}${isPayer ? ' 💳' : ''}</div>
+              <div class="list-item-title">${escapeHTML(u.name)}${u.id === me.id ? ' (you)' : ''}${isPayer ? ' 💳' : ''}</div>
               <div class="list-item-sub">${pct}% of total${isPayer ? ' · paid' : ''}</div>
             </div>
             <div class="text-right">
@@ -252,8 +266,8 @@ async function openExpenseDetail(expenseId, groupId) {
 }
 
 window.handleDeleteExpense = function(expenseId, groupId) {
-  closeModal();
   confirmDialog('Delete this expense? This cannot be undone.', async () => {
+    closeModal();
     try {
       await api.deleteExpense(expenseId);
       showToast('Expense deleted', 'info');
@@ -274,7 +288,7 @@ async function openSettleModal(groupId) {
     ]);
   } catch (e) {
     showToast('Failed to load settlement data', 'error');
-    return;
+    return false;
   }
 
   const me = api.currentUser;
@@ -303,7 +317,7 @@ async function openSettleModal(groupId) {
             return `<div class="settle-item" style="cursor:pointer" onclick="prefillSettle('${d.from}','${d.to}',${d.amount})">
               ${renderAvatar(from, 'avatar-sm')}
               <div class="settle-info flex-1">
-                <div class="settle-text text-small"><strong>${d.from === me.id ? 'You' : (from?.name || 'Unknown')}</strong> → <strong>${d.to === me.id ? 'You' : (to?.name || 'Unknown')}</strong></div>
+                <div class="settle-text text-small"><strong>${d.from === me.id ? 'You' : escapeHTML(from?.name || 'Unknown')}</strong> → <strong>${d.to === me.id ? 'You' : escapeHTML(to?.name || 'Unknown')}</strong></div>
               </div>
               <div class="settle-amount fw-bold text-danger text-small">${formatAmountUSD(d.amount)}</div>
             </div>`;
@@ -315,13 +329,13 @@ async function openSettleModal(groupId) {
       <div class="form-group">
         <label class="form-label">Who paid?</label>
         <select class="form-control" id="settle-from">
-          ${members.map(u => `<option value="${u.id}" ${u.id === defaultFrom ? 'selected' : ''}>${u.id === me.id ? 'You' : u.name}</option>`).join('')}
+          ${members.map(u => `<option value="${u.id}" ${u.id === defaultFrom ? 'selected' : ''}>${u.id === me.id ? 'You' : escapeHTML(u.name)}</option>`).join('')}
         </select>
       </div>
       <div class="form-group">
         <label class="form-label">Paid to</label>
         <select class="form-control" id="settle-to">
-          ${members.map(u => `<option value="${u.id}" ${u.id === defaultTo ? 'selected' : ''}>${u.id === me.id ? 'You' : u.name}</option>`).join('')}
+          ${members.map(u => `<option value="${u.id}" ${u.id === defaultTo ? 'selected' : ''}>${u.id === me.id ? 'You' : escapeHTML(u.name)}</option>`).join('')}
         </select>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
@@ -342,6 +356,7 @@ async function openSettleModal(groupId) {
       <button class="btn btn-primary" onclick="handleSettle('${groupId}')">Record Payment</button>
     </div>
   `);
+  return true;
 }
 
 window.prefillSettle = function(from, to, amount) {
@@ -379,8 +394,8 @@ window.handleSettle = async function(groupId) {
 };
 
 window.quickSettle = function(groupId, from, to, amount) {
-  openSettleModal(groupId).then(() => {
-    setTimeout(() => prefillSettle(from, to, amount), 50);
+  openSettleModal(groupId).then(opened => {
+    if (opened) setTimeout(() => prefillSettle(from, to, amount), 50);
   });
 };
 

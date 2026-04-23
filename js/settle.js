@@ -114,8 +114,8 @@ function renderSettleRow(d, me, iDebtor) {
       <div class="settle-info" style="flex:1">
         <div class="settle-text">
           ${iDebtor
-            ? `You owe <strong>${other?.name || 'Unknown'}</strong>`
-            : `<strong>${fromMember?.name || 'Unknown'}</strong> owes you`
+            ? `You owe <strong>${escapeHTML(other?.name || 'Unknown')}</strong>`
+            : `<strong>${escapeHTML(fromMember?.name || 'Unknown')}</strong> owes you`
           }
         </div>
         <div class="text-muted text-small">
@@ -125,7 +125,7 @@ function renderSettleRow(d, me, iDebtor) {
       <div style="text-align:right;display:flex;flex-direction:column;align-items:flex-end;gap:6px">
         <div class="settle-amount">${formatAmountUSD(d.amount)}</div>
         <button class="btn btn-sm ${iDebtor ? 'btn-primary' : 'btn-secondary'}"
-          onclick="openSettleModal('${d.groupId}').then(()=>setTimeout(()=>prefillSettle('${d.from}','${d.to}',${d.amount}),50))">
+          onclick="openSettleModal('${d.groupId}').then(opened=>{ if(opened) setTimeout(()=>prefillSettle('${d.from}','${d.to}',${d.amount}),50); })">
           ${iDebtor ? '💳 Pay Now' : '✓ Record Receipt'}
         </button>
       </div>
@@ -142,9 +142,9 @@ function renderOtherDebt(d) {
       ${renderAvatar(from, 'avatar-sm')}
       <div style="flex:1">
         <div class="settle-text text-small">
-          <strong>${from?.name || 'Unknown'}</strong> → <strong>${to?.name || 'Unknown'}</strong>
+          <strong>${escapeHTML(from?.name || 'Unknown')}</strong> → <strong>${escapeHTML(to?.name || 'Unknown')}</strong>
         </div>
-        <div class="text-muted text-small">${d.groupIcon} ${d.groupName}</div>
+        <div class="text-muted text-small">${d.groupIcon} ${escapeHTML(d.groupName)}</div>
       </div>
       <div class="text-muted fw-bold text-small">${formatAmountUSD(d.amount)}</div>
     </div>`;

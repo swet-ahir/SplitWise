@@ -4,7 +4,11 @@ const jwt = require('jsonwebtoken');
 const { query } = require('../db');
 
 const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'splitwise_secret_key';
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.error('FATAL: JWT_SECRET environment variable is not set. Set it before starting the server.');
+  process.exit(1);
+}
 
 // POST /api/auth/register
 router.post('/register', async (req, res, next) => {
@@ -100,27 +104,27 @@ router.post('/login', async (req, res, next) => {
 });
 
 // POST /api/auth/demo
+// Creates a fresh isolated demo account per session so multiple demo users don't share data.
 router.post('/demo', async (req, res, next) => {
   try {
-    const demoEmail = 'alex@demo.com';
-    const demoPassword = 'demo123';
-    const demoName = 'Alex (Demo)';
+    const crypto = require('crypto');
+    const suffix = crypto.randomBytes(4).toString('hex');
+    const demoEmail = `demo_${suffix}@demo.splitwise`;
+    const demoName = 'Demo User';
+    const demoPassword = crypto.randomBytes(16).toString('hex'); // not used for login
 
-    let result = await query(
-      'SELECT id, name, email, color, created_at FROM users WHERE LOWER(email) = $1',
-      [demoEmail]
+    const colors = ['#5bc5a7', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b'];
+    const color = colors[Math.floor(Math.random() * colors.length)];
+
+    const passwordHash = await bcrypt.hash(demoPassword, 10);
+    const result = await query(
+      'INSERT INTO users (name, email, password_hash, color) VALUES ($1, $2, $3, $4) RETURNING id, name, email, color, created_at',
+      [demoName, demoEmail, passwordHash, color]
     );
 
-    if (result.rows.length === 0) {
-      const passwordHash = await bcrypt.hash(demoPassword, 10);
-      result = await query(
-        'INSERT INTO users (name, email, password_hash, color) VALUES ($1, $2, $3, $4) RETURNING id, name, email, color, created_at',
-        [demoName, demoEmail, passwordHash, '#5bc5a7']
-      );
-    }
-
     const user = result.rows[0];
-    const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '7d' });
+    // Demo tokens expire in 2 hours to limit orphaned demo accounts
+    const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '2h' });
 
     res.json({
       user: {

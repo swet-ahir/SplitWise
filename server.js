@@ -38,9 +38,10 @@ app.get('*', (req, res) => {
 
 // Global error handler — always return JSON
 app.use((err, req, res, next) => {
-  console.error('Unhandled error:', err.message);
+  console.error('Unhandled error:', err.stack || err.message);
   if (res.headersSent) return;
-  res.status(500).json({ error: err.message || 'Internal server error' });
+  // Do not leak internal error details (DB messages, stack traces) to clients.
+  res.status(500).json({ error: 'Something went wrong. Please try again.' });
 });
 
 // Start server immediately so Railway health check passes

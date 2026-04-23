@@ -1,5 +1,16 @@
 // ===== UI UTILITIES =====
 
+// Escape user-provided strings before inserting into innerHTML to prevent XSS.
+function escapeHTML(str) {
+  if (str == null) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 // Toast notifications
 function showToast(message, type = 'info') {
   const container = document.getElementById('toast-container');
@@ -93,7 +104,7 @@ function renderSplitRows(members, splitType, customSplits = {}, amount = 0, curr
     return `
       <div class="member-split-row">
         ${renderAvatar(u, 'avatar-sm')}
-        <span class="name">${u.name}${u.id === api.currentUser?.id ? ' (you)' : ''}</span>
+        <span class="name">${escapeHTML(u.name)}${u.id === api.currentUser?.id ? ' (you)' : ''}</span>
         <div class="d-flex align-center gap-8">${inputHTML}</div>
       </div>`;
   }).join('');
@@ -140,6 +151,7 @@ function balanceHTML(amount, currency = 'USD') {
   return `<span class="${cls}">${label}${formatAmount(Math.abs(amount), currency)}</span>`;
 }
 
+window.escapeHTML = escapeHTML;
 window.showToast = showToast;
 window.openModal = openModal;
 window.closeModal = closeModal;

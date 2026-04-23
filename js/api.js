@@ -76,6 +76,7 @@ const api = {
 
   // Expenses
   async getGroupExpenses(groupId) { return request('GET', `/expenses/groups/${groupId}/expenses`); },
+  async getExpense(id) { return request('GET', `/expenses/expenses/${id}`); },
   async addExpense(groupId, data) { return request('POST', `/expenses/groups/${groupId}/expenses`, data); },
   async deleteExpense(id) { return request('DELETE', `/expenses/expenses/${id}`); },
 
@@ -85,6 +86,7 @@ const api = {
 
   // Notifications
   async getNotifications() { return request('GET', '/notifications'); },
+  async markNotificationRead(id) { return request('PUT', `/notifications/${id}`); },
   async markAllRead() { return request('PUT', '/notifications/read-all'); },
   async clearNotifications() { return request('DELETE', '/notifications'); },
 
