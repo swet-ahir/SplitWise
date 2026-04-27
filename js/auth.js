@@ -41,8 +41,9 @@ async function loadInviteBanner() {
     const inv = await api.getInvitation(token);
     const banner = document.getElementById('invite-banner');
     if (banner) {
+      // Inviter name and group name are user-controlled — escape before injecting.
       banner.innerHTML = `<div class="alert alert-info" style="margin-bottom:16px;text-align:center">
-        <strong>${inv.inviterName}</strong> invited you to join <strong>"${inv.groupName}"</strong>.<br>
+        <strong>${escapeHTML(inv.inviterName)}</strong> invited you to join <strong>"${escapeHTML(inv.groupName)}"</strong>.<br>
         Sign in or create an account to join!
       </div>`;
     }

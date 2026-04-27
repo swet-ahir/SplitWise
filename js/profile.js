@@ -22,8 +22,8 @@ async function renderProfilePage() {
               <div class="d-flex align-center gap-16 mb-24">
                 ${renderAvatar(me, 'avatar-lg')}
                 <div>
-                  <div style="font-size:1.25rem;font-weight:700">${me.name}</div>
-                  <div class="text-muted">${me.email}</div>
+                  <div style="font-size:1.25rem;font-weight:700">${escapeHTML(me.name)}</div>
+                  <div class="text-muted">${escapeHTML(me.email)}</div>
                   <div class="text-muted text-small mt-8">Member since ${formatDate(me.createdAt)}</div>
                 </div>
               </div>
@@ -132,7 +132,7 @@ window.showEditProfile = function() {
       <div id="profile-error" class="alert alert-danger hidden"></div>
       <div class="form-group">
         <label class="form-label">Full Name</label>
-        <input class="form-control" id="edit-name" type="text" value="${me.name}">
+        <input class="form-control" id="edit-name" type="text" value="${escapeHTML(me.name)}">
       </div>
       <div class="form-group">
         <label class="form-label">Avatar Color</label>

@@ -67,6 +67,17 @@ router.post('/:token/accept', auth, async (req, res, next) => {
       return res.status(410).json({ error: 'Invitation has expired' });
     }
 
+    // The token alone isn't enough — the authenticated account's email must
+    // match the email the invitation was issued to. Without this check, anyone
+    // who gets a forwarded invite link can join the group.
+    const meRes = await query('SELECT email FROM users WHERE id = $1', [userId]);
+    const myEmail = meRes.rows[0]?.email || '';
+    if (myEmail.toLowerCase() !== String(inv.email || '').toLowerCase()) {
+      return res.status(403).json({
+        error: 'This invitation was sent to a different email address. Sign in with that account to accept.',
+      });
+    }
+
     // Add to group if not already a member
     const memberCheck = await query(
       'SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2',
@@ -74,7 +85,7 @@ router.post('/:token/accept', auth, async (req, res, next) => {
     );
     if (memberCheck.rows.length === 0) {
       await query(
-        'INSERT INTO group_members (group_id, user_id) VALUES ($1, $2)',
+        'INSERT INTO group_members (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
         [inv.group_id, userId]
       );
     }

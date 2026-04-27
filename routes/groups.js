@@ -8,6 +8,50 @@ const { sendInvitationEmail } = require('../utils/email');
 const router = express.Router();
 router.use(auth);
 
+const NAME_MAX = 100;
+const ICON_MAX = 10;        // matches groups.icon VARCHAR(10)
+const COLOR_MAX = 20;       // matches groups.color VARCHAR(20)
+const MAX_INVITE_EMAILS = 50;
+
+// Whitelist mirroring js/constants.js GROUP_COLORS — keep in sync.
+const ALLOWED_COLORS = new Set([
+  '#5bc5a7', '#3b82f6', '#8b5cf6', '#ec4899',
+  '#f59e0b', '#ef4444', '#06b6d4', '#84cc16',
+]);
+
+// Loose hex-color check as a fallback if a project ever wants free-form colors.
+const HEX_COLOR_RE = /^#[0-9a-fA-F]{3,8}$/;
+
+function validateName(name) {
+  if (name === undefined || name === null) return { error: 'Group name is required' };
+  const trimmed = String(name).trim();
+  if (!trimmed) return { error: 'Group name cannot be empty' };
+  if (trimmed.length > NAME_MAX) return { error: `Group name must be ${NAME_MAX} characters or fewer` };
+  return { value: trimmed };
+}
+
+function validateIcon(icon) {
+  if (icon === undefined || icon === null) return { value: null };
+  const s = String(icon);
+  if (!s) return { error: 'Icon cannot be empty' };
+  if ([...s].length > 4) return { error: 'Icon must be a single emoji' };
+  if (s.length > ICON_MAX) return { error: 'Icon is too long' };
+  // Real emoji always include at least one non-ASCII codepoint. This rejects
+  // free-form text like "abc" without trying to enumerate the unicode emoji ranges.
+  if (/^[\x00-\x7F]+$/.test(s)) return { error: 'Icon must be an emoji' };
+  return { value: s };
+}
+
+function validateColor(color) {
+  if (color === undefined || color === null) return { value: null };
+  const s = String(color).toLowerCase();
+  if (s.length > COLOR_MAX) return { error: 'Color is too long' };
+  if (!ALLOWED_COLORS.has(s) && !HEX_COLOR_RE.test(s)) {
+    return { error: 'Invalid color' };
+  }
+  return { value: s };
+}
+
 // Helper: check if user is member of a group
 async function isMember(groupId, userId) {
   const res = await query(
@@ -36,6 +80,24 @@ async function getGroupMembers(groupId) {
   return res.rows;
 }
 
+// Helper: load expenses + settlements for balance calc.
+async function getGroupBalanceState(groupId) {
+  const expensesRes = await query(
+    `SELECT e.id, e.paid_by as "paidBy", e.currency,
+            json_object_agg(es.user_id, es.amount) as splits
+     FROM expenses e
+     JOIN expense_splits es ON es.expense_id = e.id
+     WHERE e.group_id = $1
+     GROUP BY e.id`,
+    [groupId]
+  );
+  const settlementsRes = await query(
+    'SELECT from_user as "fromUser", to_user as "toUser", amount, currency FROM settlements WHERE group_id = $1',
+    [groupId]
+  );
+  return { expenses: expensesRes.rows, settlements: settlementsRes.rows };
+}
+
 // Helper: add notification
 async function addNotification(userId, type, message, meta = {}) {
   await query(
@@ -60,28 +122,12 @@ router.get('/', async (req, res, next) => {
     const groups = await Promise.all(groupsRes.rows.map(async (g) => {
       const members = await getGroupMembers(g.id);
 
-      // Expense count
       const expCountRes = await query('SELECT COUNT(*) FROM expenses WHERE group_id = $1', [g.id]);
       const expenseCount = parseInt(expCountRes.rows[0].count, 10);
 
-      // Calculate user balance
-      const expensesRes = await query(
-        `SELECT e.id, e.paid_by as "paidBy", e.currency,
-                json_object_agg(es.user_id, es.amount) as splits
-         FROM expenses e
-         JOIN expense_splits es ON es.expense_id = e.id
-         WHERE e.group_id = $1
-         GROUP BY e.id`,
-        [g.id]
-      );
-
-      const settlementsRes = await query(
-        'SELECT from_user as "fromUser", to_user as "toUser", amount, currency FROM settlements WHERE group_id = $1',
-        [g.id]
-      );
-
+      const { expenses, settlements } = await getGroupBalanceState(g.id);
       const memberIds = members.map(m => m.id);
-      const net = calculateBalances(memberIds, expensesRes.rows, settlementsRes.rows);
+      const net = calculateBalances(memberIds, expenses, settlements);
       const userBalance = net[userId] || 0;
 
       return {
@@ -107,38 +153,45 @@ router.get('/', async (req, res, next) => {
 // POST /api/groups — create a group
 router.post('/', async (req, res, next) => {
   try {
-    const { name, icon, color, memberEmails = [] } = req.body;
+    const { name, icon, color, memberEmails = [] } = req.body || {};
     const userId = req.user.id;
 
-    if (!name || !name.trim()) {
-      return res.status(400).json({ error: 'Group name is required' });
+    const nameV = validateName(name);
+    if (nameV.error) return res.status(400).json({ error: nameV.error });
+    const iconV = validateIcon(icon);
+    if (iconV.error) return res.status(400).json({ error: iconV.error });
+    const colorV = validateColor(color);
+    if (colorV.error) return res.status(400).json({ error: colorV.error });
+
+    if (!Array.isArray(memberEmails)) {
+      return res.status(400).json({ error: 'memberEmails must be an array' });
+    }
+    if (memberEmails.length > MAX_INVITE_EMAILS) {
+      return res.status(400).json({ error: `Cannot invite more than ${MAX_INVITE_EMAILS} members at once` });
     }
 
-    // Create group
     const groupRes = await query(
       'INSERT INTO groups (name, icon, color, created_by) VALUES ($1, $2, $3, $4) RETURNING *',
-      [name.trim(), icon || '🏠', color || '#5bc5a7', userId]
+      [nameV.value, iconV.value || '🏠', colorV.value || '#5bc5a7', userId]
     );
     const group = groupRes.rows[0];
 
-    // Add creator as member
     await query(
       'INSERT INTO group_members (group_id, user_id) VALUES ($1, $2)',
       [group.id, userId]
     );
 
-    // Add other members by email; send invitations to those without accounts
     const invited = [];
     const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
     for (const email of memberEmails) {
-      if (!email || !email.trim()) continue;
-      const normalizedEmail = email.trim().toLowerCase();
+      if (!email || !String(email).trim()) continue;
+      const normalizedEmail = String(email).trim().toLowerCase();
+
       const userRes = await query(
         'SELECT id, name FROM users WHERE LOWER(email) = LOWER($1)',
         [normalizedEmail]
       );
       if (userRes.rows.length === 0) {
-        // No account — send invitation email
         const token = crypto.randomBytes(32).toString('hex');
         await query(
           `INSERT INTO group_invitations (group_id, email, invited_by, token)
@@ -149,17 +202,22 @@ router.post('/', async (req, res, next) => {
           [group.id, normalizedEmail, userId, token]
         );
         const inviteUrl = `${appUrl}?invite=${token}`;
-        await sendInvitationEmail({ to: normalizedEmail, inviterName: req.user.name, groupName: group.name, inviteUrl });
+        // Best-effort: don't fail the whole request if the email service is unreachable.
+        try {
+          await sendInvitationEmail({ to: normalizedEmail, inviterName: req.user.name, groupName: group.name, inviteUrl });
+        } catch (e) {
+          console.warn(`[email] failed for ${normalizedEmail}: ${e.message}`);
+        }
         invited.push(normalizedEmail);
         continue;
       }
       const member = userRes.rows[0];
-      if (member.id === userId) continue; // skip self
+      if (member.id === userId) continue;
 
       const alreadyMember = await isMember(group.id, member.id);
       if (!alreadyMember) {
         await query(
-          'INSERT INTO group_members (group_id, user_id) VALUES ($1, $2)',
+          'INSERT INTO group_members (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
           [group.id, member.id]
         );
         await addNotification(
@@ -225,15 +283,34 @@ router.put('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
-    const { name, icon, color } = req.body;
+    const { name, icon, color } = req.body || {};
 
     const group = await getGroupWithCreator(id);
     if (!group) return res.status(404).json({ error: 'Group not found' });
     if (group.created_by !== userId) return res.status(403).json({ error: 'Only the group creator can update it' });
 
+    let nameVal = null;
+    if (name !== undefined) {
+      const v = validateName(name);
+      if (v.error) return res.status(400).json({ error: v.error });
+      nameVal = v.value;
+    }
+    let iconVal = null;
+    if (icon !== undefined) {
+      const v = validateIcon(icon);
+      if (v.error) return res.status(400).json({ error: v.error });
+      iconVal = v.value;
+    }
+    let colorVal = null;
+    if (color !== undefined) {
+      const v = validateColor(color);
+      if (v.error) return res.status(400).json({ error: v.error });
+      colorVal = v.value;
+    }
+
     const result = await query(
       'UPDATE groups SET name = COALESCE($1, name), icon = COALESCE($2, icon), color = COALESCE($3, color) WHERE id = $4 RETURNING *',
-      [name || null, icon || null, color || null, id]
+      [nameVal, iconVal, colorVal, id]
     );
 
     const updated = result.rows[0];
@@ -253,18 +330,33 @@ router.put('/:id', async (req, res, next) => {
   }
 });
 
-// DELETE /api/groups/:id — delete group (creator only)
+// DELETE /api/groups/:id — delete group (creator only).
+// Refuses while any member still has an unsettled balance, unless `?force=true`
+// is passed by the creator who acknowledges the data loss.
 router.delete('/:id', async (req, res, next) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
+    const force = req.query.force === 'true';
 
     const group = await getGroupWithCreator(id);
     if (!group) return res.status(404).json({ error: 'Group not found' });
     if (group.created_by !== userId) return res.status(403).json({ error: 'Only the group creator can delete it' });
 
-    await query('DELETE FROM groups WHERE id = $1', [id]);
+    if (!force) {
+      const members = await getGroupMembers(id);
+      const memberIds = members.map(m => m.id);
+      const { expenses, settlements } = await getGroupBalanceState(id);
+      const net = calculateBalances(memberIds, expenses, settlements);
+      const hasOpen = Object.values(net).some(v => Math.abs(v) > 0.01);
+      if (hasOpen) {
+        return res.status(409).json({
+          error: 'Group has unsettled balances. Settle up first, or pass ?force=true to delete anyway and discard the history.',
+        });
+      }
+    }
 
+    await query('DELETE FROM groups WHERE id = $1', [id]);
     res.json({ message: 'Group deleted' });
   } catch (err) {
     next(err);
@@ -276,7 +368,7 @@ router.post('/:id/members', async (req, res, next) => {
   try {
     const { id } = req.params;
     const userId = req.user.id;
-    const { email } = req.body;
+    const { email } = req.body || {};
 
     const member = await isMember(id, userId);
     if (!member) return res.status(403).json({ error: 'Not a member of this group' });
@@ -284,17 +376,17 @@ router.post('/:id/members', async (req, res, next) => {
     const group = await getGroupWithCreator(id);
     if (!group) return res.status(404).json({ error: 'Group not found' });
 
-    if (!email) return res.status(400).json({ error: 'Email is required' });
+    if (!email || !String(email).trim()) return res.status(400).json({ error: 'Email is required' });
 
+    const trimmedEmail = String(email).trim();
     const userRes = await query(
       'SELECT id, name, email, color FROM users WHERE LOWER(email) = LOWER($1)',
-      [email.trim()]
+      [trimmedEmail]
     );
 
     if (userRes.rows.length === 0) {
-      // User doesn't have an account — send invitation email
       const token = crypto.randomBytes(32).toString('hex');
-      const normalizedEmail = email.trim().toLowerCase();
+      const normalizedEmail = trimmedEmail.toLowerCase();
 
       await query(
         `INSERT INTO group_invitations (group_id, email, invited_by, token)
@@ -308,12 +400,16 @@ router.post('/:id/members', async (req, res, next) => {
       const appUrl = process.env.APP_URL || `${req.protocol}://${req.get('host')}`;
       const inviteUrl = `${appUrl}?invite=${token}`;
 
-      await sendInvitationEmail({
-        to: normalizedEmail,
-        inviterName: req.user.name,
-        groupName: group.name,
-        inviteUrl,
-      });
+      try {
+        await sendInvitationEmail({
+          to: normalizedEmail,
+          inviterName: req.user.name,
+          groupName: group.name,
+          inviteUrl,
+        });
+      } catch (e) {
+        console.warn(`[email] failed for ${normalizedEmail}: ${e.message}`);
+      }
 
       return res.json({ invited: true, email: normalizedEmail });
     }
@@ -325,7 +421,7 @@ router.post('/:id/members', async (req, res, next) => {
     }
 
     await query(
-      'INSERT INTO group_members (group_id, user_id) VALUES ($1, $2)',
+      'INSERT INTO group_members (group_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
       [id, newMember.id]
     );
 
@@ -342,8 +438,11 @@ router.post('/:id/members', async (req, res, next) => {
   }
 });
 
-// DELETE /api/groups/:id/members/:userId — remove member
+// DELETE /api/groups/:id/members/:userId — remove member.
 // Creator can remove anyone except themselves; any member can remove themselves (leave).
+// Blocks removal while the target still has a non-zero balance — settling first
+// keeps the net-balance invariant from drifting (see `expense_splits` not having
+// ON DELETE CASCADE for users).
 router.delete('/:id/members/:userId', async (req, res, next) => {
   try {
     const { id, userId: targetUserId } = req.params;
@@ -363,6 +462,21 @@ router.delete('/:id/members/:userId', async (req, res, next) => {
 
     const memberExists = await isMember(id, targetUserId);
     if (!memberExists) return res.status(404).json({ error: 'Member not found in this group' });
+
+    // Balance check
+    const members = await getGroupMembers(id);
+    const memberIds = members.map(m => m.id);
+    const { expenses, settlements } = await getGroupBalanceState(id);
+    const net = calculateBalances(memberIds, expenses, settlements);
+    const targetBal = net[targetUserId] || 0;
+    if (Math.abs(targetBal) > 0.01) {
+      return res.status(409).json({
+        error: isSelfRemoval
+          ? 'You have an unsettled balance in this group. Settle up before leaving.'
+          : 'This member has an unsettled balance. Settle up before removing them.',
+        balance: parseFloat(targetBal.toFixed(2)),
+      });
+    }
 
     await query(
       'DELETE FROM group_members WHERE group_id = $1 AND user_id = $2',
@@ -386,23 +500,9 @@ router.get('/:id/balances', async (req, res, next) => {
 
     const members = await getGroupMembers(id);
     const memberIds = members.map(m => m.id);
+    const { expenses, settlements } = await getGroupBalanceState(id);
 
-    const expensesRes = await query(
-      `SELECT e.id, e.paid_by as "paidBy", e.currency,
-              json_object_agg(es.user_id, es.amount) as splits
-       FROM expenses e
-       JOIN expense_splits es ON es.expense_id = e.id
-       WHERE e.group_id = $1
-       GROUP BY e.id`,
-      [id]
-    );
-
-    const settlementsRes = await query(
-      'SELECT from_user as "fromUser", to_user as "toUser", amount, currency FROM settlements WHERE group_id = $1',
-      [id]
-    );
-
-    const net = calculateBalances(memberIds, expensesRes.rows, settlementsRes.rows);
+    const net = calculateBalances(memberIds, expenses, settlements);
     const simplified = simplifyDebts(net);
 
     res.json({

@@ -47,7 +47,7 @@ async function openAddExpenseModal(groupId) {
         <div class="form-group mb-0">
           <label class="form-label">Paid by</label>
           <select class="form-control" id="exp-paid-by">
-            ${members.map(u => `<option value="${u.id}" ${u.id === me.id ? 'selected' : ''}>${u.id === me.id ? 'You' : u.name}</option>`).join('')}
+            ${members.map(u => `<option value="${u.id}" ${u.id === me.id ? 'selected' : ''}>${u.id === me.id ? 'You' : escapeHTML(u.name)}</option>`).join('')}
           </select>
         </div>
         <div class="form-group mb-0">

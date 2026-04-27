@@ -1,8 +1,20 @@
 const { Pool } = require('pg');
 
+// Local Postgres usually has no SSL configured, so skip SSL when DATABASE_URL
+// points at localhost. Managed Postgres (Railway, Heroku, RDS) keeps the
+// rejectUnauthorized:false relaxed mode the original code used.
+const isLocalDb = /^postgres(?:ql)?:\/\/[^@]*@?(localhost|127\.0\.0\.1)/.test(process.env.DATABASE_URL || '');
 const pool = process.env.DATABASE_URL
-  ? new Pool({ connectionString: process.env.DATABASE_URL, ssl: { rejectUnauthorized: false } })
+  ? new Pool({
+      connectionString: process.env.DATABASE_URL,
+      ssl: isLocalDb ? false : { rejectUnauthorized: false },
+    })
   : null;
+
+async function getClient() {
+  if (!pool) throw new Error('DATABASE_URL is not configured');
+  return pool.connect();
+}
 
 async function query(text, params) {
   if (!pool) throw new Error('DATABASE_URL is not configured');
@@ -23,8 +35,14 @@ async function initSchema() {
       email VARCHAR(255) UNIQUE NOT NULL,
       password_hash VARCHAR(255) NOT NULL,
       color VARCHAR(20) DEFAULT '#5bc5a7',
+      token_version INTEGER NOT NULL DEFAULT 0,
       created_at TIMESTAMPTZ DEFAULT NOW()
     )
+  `);
+
+  // Backfill: existing deployments may have a users table without token_version.
+  await query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS token_version INTEGER NOT NULL DEFAULT 0
   `);
 
   await query(`
@@ -151,4 +169,4 @@ async function initSchema() {
   console.log('Database schema initialized');
 }
 
-module.exports = { query, initSchema };
+module.exports = { query, initSchema, getClient };

@@ -93,12 +93,26 @@ const api = {
   // Users
   async getMe() { return request('GET', '/users/me'); },
   async updateProfile(updates) {
-    const u = await request('PUT', '/users/me', updates);
-    _currentUser = u;
-    localStorage.setItem('sw_user', JSON.stringify(u));
-    return u;
+    const resp = await request('PUT', '/users/me', updates);
+    // Server now returns a fresh token with the updated name embedded so
+    // notifications and any name-derived fields stay in sync. Persist both.
+    if (resp && resp.token) {
+      localStorage.setItem('sw_token', resp.token);
+      delete resp.token;
+    }
+    _currentUser = resp;
+    localStorage.setItem('sw_user', JSON.stringify(resp));
+    return resp;
   },
-  async changePassword(currentPassword, newPassword) { return request('PUT', '/users/me/password', { currentPassword, newPassword }); },
+  async changePassword(currentPassword, newPassword) {
+    const resp = await request('PUT', '/users/me/password', { currentPassword, newPassword });
+    // Password change bumps token_version on the server, so the previously
+    // stored token is now invalid. Replace it with the fresh one.
+    if (resp && resp.token) {
+      localStorage.setItem('sw_token', resp.token);
+    }
+    return resp;
+  },
   async searchUser(email) { return request('GET', `/users/search?email=${encodeURIComponent(email)}`); },
   async getOverallBalances() { return request('GET', '/users/me/balances'); },
 };

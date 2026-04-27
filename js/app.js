@@ -25,6 +25,7 @@ function initApp() {
       sessionStorage.removeItem('pendingInvitation');
       try {
         const result = await api.acceptInvitation(pendingToken);
+        // showToast already escapes via textContent — pass the raw group name.
         showToast(`Joined "${result.groupName}"!`, 'success');
         _groups = await api.getGroups().catch(() => _groups);
         renderSidebar();
@@ -78,8 +79,8 @@ function renderSidebar() {
         <div class="sidebar-section-title">Your Groups</div>
         ${_groups.slice(0, 8).map(g => `
           <div class="nav-item ${currentRoute === 'group:' + g.id ? 'active' : ''}" onclick="navigate('group:${g.id}')">
-            <span class="icon">${g.icon}</span>
-            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${g.name}</span>
+            <span class="icon">${escapeHTML(g.icon)}</span>
+            <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHTML(g.name)}</span>
           </div>
         `).join('')}
         ${_groups.length > 8 ? `<div class="nav-item" onclick="navigate('groups')"><span class="icon">+</span> ${_groups.length - 8} more...</div>` : ''}
@@ -96,8 +97,8 @@ function renderSidebar() {
       <div class="user-info" onclick="navigate('profile')">
         ${renderAvatar(me)}
         <div class="user-details">
-          <div class="user-name">${me.name}</div>
-          <div class="user-email">${me.email}</div>
+          <div class="user-name">${escapeHTML(me.name)}</div>
+          <div class="user-email">${escapeHTML(me.email)}</div>
         </div>
       </div>
     </div>

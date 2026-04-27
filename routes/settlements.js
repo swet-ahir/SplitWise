@@ -4,6 +4,8 @@ const auth = require('../middleware/auth');
 const { EXCHANGE_RATES } = require('../utils/balances');
 
 const SUPPORTED_CURRENCIES = new Set(Object.keys(EXCHANGE_RATES));
+const AMOUNT_MAX = 9_999_999_999.99; // DECIMAL(12,2)
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const router = express.Router();
 router.use(auth);
@@ -77,18 +79,35 @@ router.post('/groups/:groupId/settlements', async (req, res, next) => {
     const member = await isMember(groupId, userId);
     if (!member) return res.status(403).json({ error: 'Not a member of this group' });
 
-    if (!from || !to || !amount) {
+    if (!from || !to || amount === undefined || amount === null) {
       return res.status(400).json({ error: 'from, to, and amount are required' });
     }
     if (from === to) {
       return res.status(400).json({ error: 'Payer and recipient must be different' });
     }
+    if (!UUID_RE.test(from) || !UUID_RE.test(to)) {
+      return res.status(400).json({ error: 'from and to must be valid user IDs' });
+    }
     const amt = parseFloat(amount);
     if (isNaN(amt) || amt <= 0) {
       return res.status(400).json({ error: 'Invalid amount' });
     }
+    if (amt > AMOUNT_MAX) {
+      return res.status(400).json({ error: `Amount cannot exceed ${AMOUNT_MAX.toLocaleString()}` });
+    }
     if (!SUPPORTED_CURRENCIES.has(currency)) {
-      return res.status(400).json({ error: `Unsupported currency "${currency}". Supported: ${[...SUPPORTED_CURRENCIES].join(', ')}` });
+      return res.status(400).json({ error: 'Unsupported currency' });
+    }
+
+    // Both parties must be members of THIS group — settling on behalf of users
+    // outside the group used to silently corrupt their overall balance and
+    // generate phony notifications.
+    const memberCheck = await query(
+      'SELECT user_id FROM group_members WHERE group_id = $1 AND user_id = ANY($2::uuid[])',
+      [groupId, [from, to]]
+    );
+    if (memberCheck.rows.length !== 2) {
+      return res.status(400).json({ error: 'Both payer and recipient must be members of this group' });
     }
 
     const date = new Date().toISOString().split('T')[0];

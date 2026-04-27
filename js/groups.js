@@ -44,17 +44,18 @@ function renderGroupCard(g, me) {
     ? `<div><div class="group-balance-label">Owed to you</div><div class="group-balance-value text-success">+${formatAmountUSD(bal)}</div></div>`
     : `<div><div class="group-balance-label">You owe</div><div class="group-balance-value text-danger">${formatAmountUSD(Math.abs(bal))}</div></div>`;
 
+  const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(g.color) ? g.color : '#5bc5a7';
   return `
     <div class="group-card" onclick="navigate('group:${g.id}')">
       <div class="group-card-header">
-        <div class="group-icon" style="background:${g.color}20;font-size:22px">${g.icon}</div>
+        <div class="group-icon" style="background:${safeColor}20;font-size:22px">${escapeHTML(g.icon)}</div>
         <div style="flex:1;min-width:0">
           <div class="group-name">${escapeHTML(g.name)}</div>
           <div class="group-members">${members.length} member${members.length !== 1 ? 's' : ''} · ${expenseCount} expense${expenseCount !== 1 ? 's' : ''}</div>
         </div>
       </div>
       <div class="d-flex" style="gap:8px;flex-wrap:wrap;margin-bottom:12px">
-        ${members.slice(0, 5).map(u => `<span title="${u.name}">${renderAvatar(u, 'avatar-sm')}</span>`).join('')}
+        ${members.slice(0, 5).map(u => `<span title="${escapeHTML(u.name)}">${renderAvatar(u, 'avatar-sm')}</span>`).join('')}
         ${members.length > 5 ? `<div class="avatar avatar-sm" style="background:var(--border);color:var(--text-secondary)">+${members.length - 5}</div>` : ''}
       </div>
       <div class="group-balances">
@@ -89,10 +90,11 @@ async function renderGroupDetail(groupId) {
     const isMultiCurrency = currencies.length > 1;
 
     document.getElementById('page-title').textContent = group.name;
+    const safeDetailColor = /^#[0-9a-fA-F]{3,8}$/.test(group.color) ? group.color : '#5bc5a7';
     document.getElementById('page-content').innerHTML = `
       <div class="back-btn" onclick="navigate('groups')">← Back to Groups</div>
       <div class="detail-header">
-        <div class="detail-icon" style="background:${group.color}20">${group.icon}</div>
+        <div class="detail-icon" style="background:${safeDetailColor}20">${escapeHTML(group.icon)}</div>
         <div>
           <div class="detail-title">${escapeHTML(group.name)}</div>
           <div class="detail-sub">${members.length} members · Created ${formatDate(group.createdAt)}</div>
@@ -429,7 +431,7 @@ async function openGroupSettingsModal(groupId) {
         ${isAdmin ? `
           <div class="form-group">
             <label class="form-label">Group Name</label>
-            <input class="form-control" id="edit-group-name" type="text" value="${g.name}" maxlength="50">
+            <input class="form-control" id="edit-group-name" type="text" value="${escapeHTML(g.name)}" maxlength="50">
           </div>
           <div class="form-group">
             <label class="form-label">Icon</label>
@@ -519,7 +521,7 @@ async function openAddMemberModal(groupId) {
 
   openModal(`
     <div class="modal-header">
-      <h3>Add Member to ${g.name}</h3>
+      <h3>Add Member to ${escapeHTML(g.name)}</h3>
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">

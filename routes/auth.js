@@ -6,25 +6,46 @@ const { query } = require('../db');
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET;
 
+const NAME_MAX = 100;
+const EMAIL_MAX = 255;
+const PASSWORD_MIN = 6;
+const PASSWORD_MAX = 200;
+
+// RFC-5322-flavoured (not exhaustive but rejects clear garbage like "a@b.c").
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+
+function signToken(user, opts = {}) {
+  return jwt.sign(
+    {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      tokenVersion: user.token_version ?? 0,
+    },
+    JWT_SECRET,
+    { expiresIn: '7d', ...opts }
+  );
+}
+
 // POST /api/auth/register
 router.post('/register', async (req, res, next) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password } = req.body || {};
 
     if (!name || !email || !password) {
       return res.status(400).json({ error: 'Name, email, and password are required' });
     }
-    if (password.length < 6) {
-      return res.status(400).json({ error: 'Password must be at least 6 characters' });
+    const trimmedName = String(name).trim();
+    const trimmedEmail = String(email).trim();
+    if (!trimmedName) return res.status(400).json({ error: 'Name cannot be empty' });
+    if (trimmedName.length > NAME_MAX) return res.status(400).json({ error: `Name must be ${NAME_MAX} characters or fewer` });
+    if (trimmedEmail.length > EMAIL_MAX) return res.status(400).json({ error: 'Email is too long' });
+    if (!EMAIL_RE.test(trimmedEmail)) return res.status(400).json({ error: 'Please enter a valid email address' });
+    if (typeof password !== 'string' || password.length < PASSWORD_MIN) {
+      return res.status(400).json({ error: `Password must be at least ${PASSWORD_MIN} characters` });
     }
-    if (!/\S+@\S+\.\S+/.test(email)) {
-      return res.status(400).json({ error: 'Please enter a valid email address' });
-    }
-
-    // Check if email already exists
-    const existing = await query('SELECT id FROM users WHERE LOWER(email) = LOWER($1)', [email]);
-    if (existing.rows.length > 0) {
-      return res.status(409).json({ error: 'Email already registered' });
+    if (password.length > PASSWORD_MAX) {
+      return res.status(400).json({ error: `Password must be ${PASSWORD_MAX} characters or fewer` });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
@@ -35,13 +56,22 @@ router.post('/register', async (req, res, next) => {
     const colors = ['#5bc5a7', '#3b82f6', '#8b5cf6', '#ec4899', '#f59e0b', '#ef4444', '#06b6d4', '#84cc16', '#f97316', '#14b8a6'];
     const color = colors[count % colors.length];
 
-    const result = await query(
-      'INSERT INTO users (name, email, password_hash, color) VALUES ($1, $2, $3, $4) RETURNING id, name, email, color, created_at',
-      [name.trim(), email.trim().toLowerCase(), passwordHash, color]
-    );
+    let result;
+    try {
+      result = await query(
+        'INSERT INTO users (name, email, password_hash, color) VALUES ($1, $2, $3, $4) RETURNING id, name, email, color, token_version, created_at',
+        [trimmedName, trimmedEmail.toLowerCase(), passwordHash, color]
+      );
+    } catch (err) {
+      // Postgres unique_violation — converts a race-window collision into a clean 409.
+      if (err && err.code === '23505') {
+        return res.status(409).json({ error: 'Email already registered' });
+      }
+      throw err;
+    }
 
     const user = result.rows[0];
-    const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '7d' });
+    const token = signToken(user);
 
     res.status(201).json({
       user: {
@@ -61,15 +91,15 @@ router.post('/register', async (req, res, next) => {
 // POST /api/auth/login
 router.post('/login', async (req, res, next) => {
   try {
-    const { email, password } = req.body;
+    const { email, password } = req.body || {};
 
     if (!email || !password) {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
     const result = await query(
-      'SELECT id, name, email, password_hash, color, created_at FROM users WHERE LOWER(email) = LOWER($1)',
-      [email.trim()]
+      'SELECT id, name, email, password_hash, color, token_version, created_at FROM users WHERE LOWER(email) = LOWER($1)',
+      [String(email).trim()]
     );
 
     if (result.rows.length === 0) {
@@ -82,7 +112,7 @@ router.post('/login', async (req, res, next) => {
       return res.status(401).json({ error: 'Invalid email or password' });
     }
 
-    const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '7d' });
+    const token = signToken(user);
 
     res.json({
       user: {
@@ -104,7 +134,7 @@ router.post('/login', async (req, res, next) => {
 router.post('/demo', async (req, res, next) => {
   try {
     const crypto = require('crypto');
-    const suffix = crypto.randomBytes(4).toString('hex');
+    const suffix = crypto.randomBytes(8).toString('hex'); // widened from 4 → 8 bytes; collision space ~10^19
     const demoEmail = `demo_${suffix}@demo.splitwise`;
     const demoName = 'Demo User';
     const demoPassword = crypto.randomBytes(16).toString('hex'); // not used for login
@@ -114,13 +144,13 @@ router.post('/demo', async (req, res, next) => {
 
     const passwordHash = await bcrypt.hash(demoPassword, 10);
     const result = await query(
-      'INSERT INTO users (name, email, password_hash, color) VALUES ($1, $2, $3, $4) RETURNING id, name, email, color, created_at',
+      'INSERT INTO users (name, email, password_hash, color) VALUES ($1, $2, $3, $4) RETURNING id, name, email, color, token_version, created_at',
       [demoName, demoEmail, passwordHash, color]
     );
 
     const user = result.rows[0];
     // Demo tokens expire in 2 hours to limit orphaned demo accounts
-    const token = jwt.sign({ id: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: '2h' });
+    const token = signToken(user, { expiresIn: '2h' });
 
     res.json({
       user: {

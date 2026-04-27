@@ -11,13 +11,19 @@ function escapeHTML(str) {
     .replace(/'/g, '&#39;');
 }
 
-// Toast notifications
+// Toast notifications. Build the DOM with textContent rather than innerHTML so
+// callers can safely pass server-derived error strings without XSS risk.
 function showToast(message, type = 'info') {
   const container = document.getElementById('toast-container');
   const toast = document.createElement('div');
   toast.className = `toast ${type}`;
   const icons = { success: '✓', error: '✕', info: 'ℹ' };
-  toast.innerHTML = `<span>${icons[type] || 'ℹ'}</span><span>${message}</span>`;
+  const iconEl = document.createElement('span');
+  iconEl.textContent = icons[type] || 'ℹ';
+  const msgEl = document.createElement('span');
+  msgEl.textContent = String(message ?? '');
+  toast.appendChild(iconEl);
+  toast.appendChild(msgEl);
   container.appendChild(toast);
   setTimeout(() => {
     toast.style.opacity = '0';
@@ -50,12 +56,16 @@ function closeModal() {
   if (existing) existing.remove();
 }
 
-// Render avatar
+// Render avatar. The user.color field comes from the server but is restricted
+// server-side to a hex/whitelist; still, escape anything that lands in inline
+// CSS to neutralize a future relaxation of that rule.
 function renderAvatar(user, sizeClass = '') {
   if (!user) return `<div class="avatar ${sizeClass}" style="background:#ccc">?</div>`;
   const initials = getInitials(user.name);
-  const color = user.color || '#5bc5a7';
-  return `<div class="avatar ${sizeClass}" style="background:${color};color:white">${initials}</div>`;
+  const rawColor = user.color || '#5bc5a7';
+  // Whitelist: only allow colors that look like a hex code.
+  const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(rawColor) ? rawColor : '#5bc5a7';
+  return `<div class="avatar ${sizeClass}" style="background:${safeColor};color:white">${escapeHTML(initials)}</div>`;
 }
 
 // Currency options HTML
@@ -110,7 +120,7 @@ function renderSplitRows(members, splitType, customSplits = {}, amount = 0, curr
   }).join('');
 }
 
-// Confirm dialog
+// Confirm dialog. Escapes the message in case the caller passes server text.
 function confirmDialog(message, onConfirm) {
   openModal(`
     <div class="modal-header">
@@ -118,7 +128,7 @@ function confirmDialog(message, onConfirm) {
       <button class="close-btn" onclick="closeModal()">✕</button>
     </div>
     <div class="modal-body">
-      <p>${message}</p>
+      <p>${escapeHTML(message)}</p>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>

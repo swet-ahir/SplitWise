@@ -200,9 +200,10 @@ function renderGroupRow(g, me, byGroup) {
     ? `<span class="text-success fw-bold">+${formatAmountUSD(bal)}</span>`
     : `<span class="text-danger fw-bold">-${formatAmountUSD(Math.abs(bal))}</span>`;
 
+  const safeColor = /^#[0-9a-fA-F]{3,8}$/.test(g.color) ? g.color : '#5bc5a7';
   return `
     <div class="list-item" style="padding:14px 24px;cursor:pointer" onclick="navigate('group:${g.id}')">
-      <div class="group-icon" style="background:${g.color}20;width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px">${g.icon}</div>
+      <div class="group-icon" style="background:${safeColor}20;width:40px;height:40px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:20px">${escapeHTML(g.icon)}</div>
       <div class="list-item-main">
         <div class="list-item-title">${escapeHTML(g.name)}</div>
         <div class="list-item-sub">${memberCount} member${memberCount !== 1 ? 's' : ''}</div>
