@@ -131,7 +131,9 @@ router.put('/me/password', async (req, res, next) => {
   }
 });
 
-// GET /api/users/search?email=x — find user by exact email
+// GET /api/users/search?email=x — find user by exact email.
+// Returns 200 with {user: null} when not found rather than 404, so an attacker
+// can't probe the user directory by status code (account enumeration).
 router.get('/search', async (req, res, next) => {
   try {
     const { email } = req.query;
@@ -142,10 +144,10 @@ router.get('/search', async (req, res, next) => {
       [String(email).trim()]
     );
 
-    if (result.rows.length === 0) return res.status(404).json({ error: 'No user found with that email' });
+    if (result.rows.length === 0) return res.json({ user: null });
 
     const u = result.rows[0];
-    res.json({ id: u.id, name: u.name, email: u.email, color: u.color });
+    res.json({ user: { id: u.id, name: u.name, email: u.email, color: u.color } });
   } catch (err) {
     next(err);
   }

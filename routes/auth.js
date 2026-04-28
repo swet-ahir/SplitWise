@@ -1,10 +1,38 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const rateLimit = require('express-rate-limit');
 const { query } = require('../db');
 
 const router = express.Router();
 const JWT_SECRET = process.env.JWT_SECRET;
+
+// Rate limiters scoped per-route. Numbers are intentionally generous for
+// legitimate users on a NAT'd network but tight enough to deter brute force.
+// 429 fires per IP; switch to a Redis store if you ever scale beyond one process.
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many login attempts. Try again in a few minutes.' },
+});
+
+const registerLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Too many registrations from this IP. Try again later.' },
+});
+
+const demoLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'Demo account creation is rate-limited. Try again later.' },
+});
 
 const NAME_MAX = 100;
 const EMAIL_MAX = 255;
@@ -28,7 +56,7 @@ function signToken(user, opts = {}) {
 }
 
 // POST /api/auth/register
-router.post('/register', async (req, res, next) => {
+router.post('/register', registerLimiter, async (req, res, next) => {
   try {
     const { name, email, password } = req.body || {};
 
@@ -89,7 +117,7 @@ router.post('/register', async (req, res, next) => {
 });
 
 // POST /api/auth/login
-router.post('/login', async (req, res, next) => {
+router.post('/login', loginLimiter, async (req, res, next) => {
   try {
     const { email, password } = req.body || {};
 
@@ -131,7 +159,7 @@ router.post('/login', async (req, res, next) => {
 
 // POST /api/auth/demo
 // Creates a fresh isolated demo account per session so multiple demo users don't share data.
-router.post('/demo', async (req, res, next) => {
+router.post('/demo', demoLimiter, async (req, res, next) => {
   try {
     const crypto = require('crypto');
     const suffix = crypto.randomBytes(8).toString('hex'); // widened from 4 → 8 bytes; collision space ~10^19

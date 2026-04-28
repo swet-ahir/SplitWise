@@ -22,13 +22,36 @@ console.log('[startup] DATABASE_URL present:', !!process.env.DATABASE_URL);
 
 const express = require('express');
 const path = require('path');
+const helmet = require('helmet');
 const { initSchema } = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const isProd = process.env.NODE_ENV === 'production';
+
+// Trust the platform proxy (Railway, Heroku, etc.) for X-Forwarded-Proto so
+// req.secure is accurate when terminating TLS upstream.
+app.set('trust proxy', 1);
+
+// Security response headers. CSP is disabled because the current frontend uses
+// inline `onclick=` handlers and `style=""` attributes — turning CSP on without
+// `'unsafe-inline'` would break the app, and turning it on *with* `'unsafe-inline'`
+// adds little value. Refactoring to event-listener-only would let us enable CSP.
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
+
+// Force HTTPS in production. Skipped in dev so localhost still works.
+if (isProd) {
+  app.use((req, res, next) => {
+    if (req.secure) return next();
+    return res.redirect(308, `https://${req.headers.host}${req.originalUrl}`);
+  });
+}
 
 // Middleware
-app.use(express.json());
+app.use(express.json({ limit: '256kb' }));
 app.use(express.static(path.join(__dirname)));
 
 // API Routes

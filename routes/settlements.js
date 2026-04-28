@@ -156,4 +156,32 @@ router.post('/groups/:groupId/settlements', async (req, res, next) => {
   }
 });
 
+// DELETE /api/settlements/:id — undo a settlement entry.
+// Allowed for the recorder OR the group creator. Notifications referencing this
+// settlement are cleared at the same time so users don't see stale "X paid you"
+// items pointing at a deleted row.
+router.delete('/:id', async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    const settleRes = await query('SELECT * FROM settlements WHERE id = $1', [id]);
+    if (settleRes.rows.length === 0) return res.status(404).json({ error: 'Settlement not found' });
+    const settlement = settleRes.rows[0];
+
+    const groupRes = await query('SELECT created_by FROM groups WHERE id = $1', [settlement.group_id]);
+    const groupCreator = groupRes.rows[0]?.created_by;
+
+    if (settlement.created_by !== userId && groupCreator !== userId) {
+      return res.status(403).json({ error: 'Not authorized to delete this settlement' });
+    }
+
+    await query(`DELETE FROM notifications WHERE meta->>'settlementId' = $1`, [id]);
+    await query('DELETE FROM settlements WHERE id = $1', [id]);
+    res.json({ message: 'Settlement deleted' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

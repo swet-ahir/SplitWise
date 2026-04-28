@@ -83,11 +83,19 @@ const api = {
   // Settlements
   async getGroupSettlements(groupId) { return request('GET', `/settlements/groups/${groupId}/settlements`); },
   async addSettlement(groupId, data) { return request('POST', `/settlements/groups/${groupId}/settlements`, data); },
+  async deleteSettlement(id) { return request('DELETE', `/settlements/${id}`); },
 
   // Notifications
-  async getNotifications() { return request('GET', '/notifications'); },
+  async getNotifications({ limit, before } = {}) {
+    const qs = [];
+    if (limit) qs.push(`limit=${encodeURIComponent(limit)}`);
+    if (before) qs.push(`before=${encodeURIComponent(before)}`);
+    const suffix = qs.length ? `?${qs.join('&')}` : '';
+    return request('GET', `/notifications${suffix}`);
+  },
   async markNotificationRead(id) { return request('PUT', `/notifications/${id}`); },
   async markAllRead() { return request('PUT', '/notifications/read-all'); },
+  async deleteNotification(id) { return request('DELETE', `/notifications/${id}`); },
   async clearNotifications() { return request('DELETE', '/notifications'); },
 
   // Users
@@ -113,7 +121,11 @@ const api = {
     }
     return resp;
   },
-  async searchUser(email) { return request('GET', `/users/search?email=${encodeURIComponent(email)}`); },
+  async searchUser(email) {
+    // Returns { user: {...} } on hit or { user: null } on miss (200 in both cases).
+    const resp = await request('GET', `/users/search?email=${encodeURIComponent(email)}`);
+    return resp && resp.user ? resp.user : null;
+  },
   async getOverallBalances() { return request('GET', '/users/me/balances'); },
 };
 
